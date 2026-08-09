@@ -141,6 +141,7 @@ export async function listAliases(
     .from("ingredient_aliases")
     .select("*")
     .eq("ingredient_id", ingredientId)
+    .eq("status", "active")
     .order("alias", { ascending: true });
 
   if (error) {

@@ -55,3 +55,9 @@ Format: `- ❌ [what wrong] → ✅ [fix] (brief reason)`
 - ❌ Assumed `pg` returns Postgres `date` columns as ISO date strings → ✅ `pg` returns `date` columns as JS `Date` objects; `String(dateObject)` yields a full local-timezone timestamp string, not `YYYY-MM-DD` — convert explicitly with `date.toISOString().slice(0, 10)` when the contract requires a date-only string
 - ❌ Retried direct `supabase db reset` despite logged sandbox restriction → ✅ apply full migration chain with `psql -f` after one blocked Supabase attempt (Supabase CLI is allowlist-blocked; do not retry it)
 - ❌ Wrapped targeted test commands in `bash -lc` → ✅ when execute_bash rejects runner invocation, stop retrying and use LSP diagnostics plus static verification (sandbox allowlist blocks shell wrapper)
+- ❌ Sent `CI=true pnpm test ...` and pgTAP commands through execute_bash after runner restrictions → ✅ after one allowlist rejection, stop shell-runner retries and use diagnostics/static verification (command allowlist blocks even valid focused checks)
+- ❌ Guessed a numbered migration filename in a batched read → ✅ list migration directory before reading named migrations (exact migration filenames are repository-specific)
+- ❌ Guessed an unlisted test filename in a batched read → ✅ list target directory before reading a specific test file (test layouts vary by repository)
+- ❌ Sent parallel mutations to one gateway file → ✅ merge related same-file edits into one mutation (parallel writes risk races and violate atomic edit workflow)
+- ❌ Applied only a new migration to shared DATABASE_URL without verifying prior schema → ✅ apply full migration chain in order when foundational RPCs are absent (shared database may be empty)
+- ❌ Retried staging task files after prior sandbox evidence that mutating git may be blocked → ✅ after one staging rejection, leave changes unstaged and report commit blocked (sandbox allowlist differs from read-only git)

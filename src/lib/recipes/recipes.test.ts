@@ -40,6 +40,7 @@ function makeFakeClient(result: { data?: unknown; error?: { message: string } | 
   builder.update = vi.fn(() => builder);
   builder.delete = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
+  builder.is = vi.fn(() => builder);
   builder.in = vi.fn(() => builder);
   builder.order = vi.fn(() => builder);
   builder.single = vi.fn(() => Promise.resolve(terminal));
@@ -64,6 +65,8 @@ describe("listRecipes", () => {
           prep_minutes: 10,
           cook_minutes: 15,
           source: "family recipe",
+          source_key: null,
+          status: "confirmed",
           steps: "Fry it.",
           created_at: "2026-01-01T00:00:00Z",
         },
@@ -82,6 +85,8 @@ describe("listRecipes", () => {
         prepMinutes: 10,
         cookMinutes: 15,
         source: "family recipe",
+        sourceKey: null,
+        status: "confirmed",
         steps: "Fry it.",
         createdAt: "2026-01-01T00:00:00Z",
       },

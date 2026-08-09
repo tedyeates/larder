@@ -5,7 +5,7 @@
  * supabase/migrations/20260102000000_ingredient_registry.sql.
  */
 
-export type IngredientStatus = "active" | "archived";
+export type IngredientStatus = "active" | "archived" | "draft";
 
 export type Ingredient = {
   id: string;

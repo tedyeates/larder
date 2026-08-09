@@ -53,6 +53,23 @@ export const AGENT_GATEWAY_TOOLS = [
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
   },
   {
+    name: "larder_submit_plan_proposal",
+    description: "Submit or resubmit a complete Plan Proposal bundle for human review. Returns structured Plan Check failures without storing an invalid proposal.",
+    inputSchema: {
+      type: "object",
+      required: ["planningHorizon", "slots", "newRecipes", "newIngredients", "suggestedAliases"],
+      properties: {
+        proposalId: { type: ["string", "null"] },
+        planningHorizon: { type: "string" },
+        slots: { type: "array" },
+        newRecipes: { type: "array" },
+        newIngredients: { type: "array" },
+        suggestedAliases: { type: "array" },
+      },
+      additionalProperties: false,
+    },
+  },
+  {
     name: "larder_create_preference",
     description: "Create one Preference. This is the only write scope in this gateway version.",
     inputSchema: {
@@ -171,6 +188,10 @@ async function withAgentToken<T>(secret: string, work: (client: PoolClient) => P
     await client.query("select set_config('request.jwt.claims', $1, true)", [
       JSON.stringify({ sub: ownerId, role: "authenticated" }),
     ]);
+    // Confirmation is deliberately a browser-user transition. The database
+    // receives this marker with every Agent Token transaction and refuses to
+    // let this credential cross the review boundary.
+    await client.query("select set_config('request.agent_token', 'true', true)");
 
     const result = await work(client);
     await client.query("commit");
@@ -219,6 +240,7 @@ async function readRecipes(client: PoolClient): Promise<ToolResult> {
          where l.recipe_id = r.id
        ), '[]'::jsonb) as lines
      from public.recipes r
+     where r.proposal_id is null
      order by r.name asc, r.id asc`
   );
 
@@ -339,6 +361,30 @@ async function readCurrentMealSlots(client: PoolClient): Promise<ToolResult> {
   };
 }
 
+function planProposalBundle(input: JsonObject): JsonObject {
+  const planningHorizon = requiredNonBlankString(input.planningHorizon, "planningHorizon");
+  const fields = ["slots", "newRecipes", "newIngredients", "suggestedAliases"] as const;
+  const bundle: JsonObject = { planningHorizon };
+  for (const field of fields) {
+    if (!Array.isArray(input[field])) throw new McpToolError(400, `${field} must be an array`);
+    bundle[field] = input[field];
+  }
+  return bundle;
+}
+
+async function submitPlanProposal(client: PoolClient, input: JsonObject): Promise<ToolResult> {
+  const bundle = planProposalBundle(input);
+  const proposalId = optionalString(input.proposalId, "proposalId");
+  if (proposalId !== undefined && proposalId !== null && proposalId.trim() === "") {
+    throw new McpToolError(400, "proposalId must be non-blank when provided");
+  }
+  const result = await client.query<{ submit_plan_proposal: ToolResult }>(
+    "select public.submit_plan_proposal($1::jsonb, $2::uuid)",
+    [JSON.stringify(bundle), proposalId ?? null]
+  );
+  return result.rows[0]?.submit_plan_proposal ?? { accepted: false, failures: [{ rule: "database", message: "Proposal was not returned" }] };
+}
+
 async function createPreference(client: PoolClient, input: JsonObject): Promise<ToolResult> {
   const body = requiredNonBlankString(input.body, "body");
   const category = optionalString(input.category, "category");
@@ -406,6 +452,8 @@ async function dispatchTool(
       return readPreferences(client);
     case "larder_read_current_meal_slots":
       return readCurrentMealSlots(client);
+    case "larder_submit_plan_proposal":
+      return submitPlanProposal(client, input);
     case "larder_create_preference":
       return createPreference(client, input);
     case "larder_update_preference":

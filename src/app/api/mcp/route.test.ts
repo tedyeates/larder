@@ -330,4 +330,44 @@ describe("POST /api/mcp", () => {
     );
     expect(after.rows[0]).toEqual(before.rows[0]);
   });
+
+  it("lets a fake Runner submit, receive rejection comments, and resubmit a Plan Proposal", async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const tomorrow = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+    const proposalBundle = {
+      planningHorizon: tomorrow,
+      slots: [
+        { slotDate: today, mealTime: "breakfast", recipeId, isCook: true, cookMultiplier: 1 },
+        { slotDate: today, mealTime: "lunch", recipeId, isCook: false },
+      ],
+      newRecipes: [],
+      newIngredients: [],
+      suggestedAliases: [],
+    };
+
+    const submitted = await callTool("larder_submit_plan_proposal", proposalBundle);
+    expect(submitted.status).toBe(200);
+    const submittedContent = structured(await rpc(submitted));
+    expect(submittedContent).toMatchObject({ accepted: true });
+    const proposalId = (submittedContent.proposal as { id: string }).id;
+
+    const browser = await database.connect();
+    try {
+      await browser.query("begin");
+      await browser.query("set local role authenticated");
+      await browser.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: userId, role: "authenticated" })]);
+      await browser.query("select public.reject_plan_proposal($1, $2)", [proposalId, "Keep breakfast empty"]);
+      await browser.query("commit");
+    } finally {
+      browser.release();
+    }
+    await expect(database.query("select status, rejection_comment from public.plan_proposals where id = $1", [proposalId])).resolves.toMatchObject({
+      rows: [{ status: "rejected", rejection_comment: "Keep breakfast empty" }],
+    });
+
+    const resubmitted = await callTool("larder_submit_plan_proposal", { ...proposalBundle, proposalId });
+    expect(resubmitted.status).toBe(200);
+    expect(structured(await rpc(resubmitted))).toMatchObject({ accepted: true, proposal: { id: proposalId, status: "review" } });
+    await database.query("delete from public.plan_proposals where id = $1", [proposalId]);
+  });
 });

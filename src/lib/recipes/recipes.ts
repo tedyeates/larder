@@ -125,7 +125,11 @@ export function allergenFlagsFromTags(tags: string[]): string[] {
 // --- Recipes ---------------------------------------------------------------
 
 export async function listRecipes(client: SupabaseClient): Promise<Recipe[]> {
-  const { data, error } = await client.from("recipes").select("*").order("name", { ascending: true });
+  const { data, error } = await client
+    .from("recipes")
+    .select("*")
+    .is("proposal_id", null)
+    .order("name", { ascending: true });
 
   if (error) {
     throw new Error(errorMessage(error, "Failed to load Recipes"));
