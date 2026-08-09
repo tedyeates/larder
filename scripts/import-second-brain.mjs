@@ -18,7 +18,16 @@ const STORAGE_LOCATIONS = new Map([
 ]);
 
 function normalise(value) {
-  return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
+  // Deliberately not toLocaleLowerCase: the host locale must not change what
+  // this importer considers the same Ingredient, Aisle or unit.
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+/** Units match when they differ only by a trailing plural s ("clove"/"cloves"). */
+function sameUnit(left, right) {
+  const from = normalise(left);
+  const to = normalise(right);
+  return from === to || `${from}s` === to || from === `${to}s`;
 }
 
 function cleanCell(value) {
@@ -119,7 +128,7 @@ export function parseUnits(markdown) {
   for (const line of markdown.split(/\r?\n/)) {
     const match = line.match(conversionPattern);
     if (!match) continue;
-    const [, sourcePhrase, factorText] = match;
+    const [, sourcePhrase, factorText, targetUnit] = match;
     const sourceWords = normalise(sourcePhrase).split(" ");
     const candidates = dedupedIngredients
       .map((ingredient) => ({ ingredient, words: normalise(ingredient.name).split(" ") }))
@@ -130,6 +139,14 @@ export function parseUnits(markdown) {
       return (atStart || atEnd) && sourceWords.length === words.length + 1;
     });
     if (!candidate) continue;
+    // A factor is only a Convertible Unit if it lands in the Ingredient's own
+    // Stock Unit; storing one that lands anywhere else would silently corrupt
+    // every later depletion, so it aborts instead.
+    if (!sameUnit(targetUnit, candidate.ingredient.stockUnit)) {
+      throw new Error(
+        `Conversion note "1 ${sourcePhrase}" gives a factor to ${targetUnit}, but ${candidate.ingredient.name} is stocked in ${candidate.ingredient.stockUnit}; fix units.md.`
+      );
+    }
     const startsWithIngredient = sourceWords.slice(0, candidate.words.length).join(" ") === candidate.words.join(" ");
     const fromUnit = startsWithIngredient
       ? sourceWords.slice(candidate.words.length).join(" ")
@@ -260,16 +277,21 @@ function parseStorageLocation(value) {
 /** Parse TickTick CSV export rows; location always comes from its column, never the title emoji. */
 export function parseTickTickCsv(csv) {
   const rows = parseCsv(csv);
-  if (rows.length === 0) return [];
-  const headers = rows[0].map((header) => normalise(header.replace(/^\uFEFF/, "")));
-  const titleIndex = firstHeaderIndex(headers, ["title", "task"]);
-  const columnIndex = firstHeaderIndex(headers, ["column", "section"]);
-  const createdIndex = firstHeaderIndex(headers, ["createdtime", "created time", "created_at"]);
-  if (titleIndex < 0 || columnIndex < 0 || createdIndex < 0) {
-    throw new Error("TickTick CSV needs title, column and createdTime columns.");
-  }
+  const headerIndexes = (row) => {
+    const headers = row.map((header) => normalise(header.replace(/^\uFEFF/, "")));
+    return {
+      titleIndex: firstHeaderIndex(headers, ["title", "task"]),
+      columnIndex: firstHeaderIndex(headers, ["column", "section"]),
+      createdIndex: firstHeaderIndex(headers, ["createdtime", "created time", "created_at"]),
+    };
+  };
+  // A TickTick export opens with metadata lines ("Date: ...", "Version: ...")
+  // before the real header row, so the header is found rather than assumed.
+  const headerRow = rows.findIndex((row) => Object.values(headerIndexes(row)).every((index) => index >= 0));
+  if (headerRow < 0) throw new Error("TickTick CSV needs title, column and createdTime columns.");
+  const { titleIndex, columnIndex, createdIndex } = headerIndexes(rows[headerRow]);
 
-  return rows.slice(1).map((row) => {
+  return rows.slice(headerRow + 1).map((row) => {
     const title = cleanCell(row[titleIndex] ?? "").replace(/^[^\p{L}\p{N}]+/u, "").trim();
     const separator = title.indexOf("—");
     if (separator < 0) throw new Error(`TickTick task "${title}" must use “Ingredient — quantity” or “Ingredient — staple”.`);
@@ -385,7 +407,15 @@ export function buildImportPlan({ units, shops, pantry, mealLogs, preferences, t
   for (const lot of pantry) addIngredient(lot.ingredientName, lot.stockUnit, lot.isHandDepleted);
   const placements = [];
   for (const shop of shops) {
+    const shopAisles = new Set(shop.aisles.map((aisle) => normalise(aisle.name)));
     for (const placement of shop.placements) {
+      // Aisles carry a mandatory emoji, so one named only by an item table
+      // cannot be invented here. Fail in the plan, not mid-write.
+      if (!shopAisles.has(normalise(placement.aisleName))) {
+        throw new Error(
+          `${shop.name} places ${placement.ingredientName} in Aisle "${placement.aisleName}", which has no emoji heading in that Shop Config; add the heading so the Aisle can be created.`
+        );
+      }
       const unit = defaultUnitForAisle(units.defaults, placement.aisleName);
       addIngredient(placement.ingredientName, unit, false);
       placements.push({ ingredientName: placement.ingredientName, shopName: shop.name, aisleName: placement.aisleName });
@@ -543,7 +573,7 @@ async function writePlan(plan, databaseUrl) {
     for (const mealLog of plan.mealLogs) {
       const note = mealLog.note ? `×${mealLog.multiplier} — ${mealLog.note}` : `×${mealLog.multiplier}`;
       await client.query(
-        "insert into public.meal_logs (occurred_on, kind, recipe_name, note, source_key) values ($1::date, 'eaten', $2, $3, $4) on conflict (source_key) do nothing",
+        "insert into public.meal_logs (occurred_on, kind, recipe_name, note, source_key) values ($1::date, 'eaten', $2, $3, $4) on conflict (source_key) where source_key is not null do nothing",
         [mealLog.occurredOn, mealLog.recipeName, note, createHash("sha256").update(mealLog.sourceKey).digest("hex")]
       );
     }

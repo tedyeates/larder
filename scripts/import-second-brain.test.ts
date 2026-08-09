@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   buildImportPlan,
   parseCookLog,
@@ -7,6 +7,7 @@ import {
   parseTagVocabulary,
   parseTickTickCsv,
   parseUnits,
+  printPlan,
 } from "./import-second-brain.mjs";
 
 const unitsMarkdown = `
@@ -163,6 +164,71 @@ title: Weeknight ramen
       { category: "Diet", body: "Lactose free" },
       { category: "Diet", body: "Avoid shellfish" },
     ]);
+  });
+
+  it("finds the header row beneath a TickTick export's metadata preamble", () => {
+    const csv = `"Date: 2026-06-05+0000"\n"Version: 7.1"\n"Status: 0 Normal"\n"Folder Name","List Name","Title","Column","createdTime"\n"","Pantry","❄️ Carrots — 8 pieces","Fridge","2026-06-01T10:20:00.000Z"\n`;
+
+    expect(parseTickTickCsv(csv)).toEqual([
+      {
+        ingredientName: "Carrots",
+        quantity: 8,
+        stockUnit: "pieces",
+        storageLocation: "fridge",
+        acquiredOn: "2026-06-01",
+        isHandDepleted: false,
+      },
+    ]);
+  });
+
+  it("refuses a conversion note whose factor does not land in the Ingredient's Stock Unit", () => {
+    expect(() => parseUnits(`
+| Ingredient | Stock Unit |
+| --- | --- |
+| Chopped tomatoes | tins |
+
+- 1 tin chopped tomatoes ≈ 400g
+`)).toThrow(/stocked in tins/);
+  });
+
+  it("refuses a Placement whose Aisle has no emoji heading to create it from", () => {
+    expect(() => buildImportPlan({
+      units: parseUnits(unitsMarkdown),
+      shops: [parseShopConfig("Lidl", "| Ingredient | Aisle |\n| --- | --- |\n| Carrots | Fruit & Veg |")],
+      pantry: [],
+      mealLogs: [],
+      preferences: [],
+      tags: [],
+    })).toThrow(/no emoji heading/);
+  });
+
+  it("prints the dry run grouped by type and states that nothing was written", () => {
+    const lines: string[] = [];
+    const log = vi.spyOn(console, "log").mockImplementation((message?: unknown) => {
+      lines.push(String(message));
+    });
+    try {
+      printPlan(buildImportPlan({
+        units: parseUnits(unitsMarkdown),
+        shops: [parseShopConfig("Lidl", "## 🥬 Fruit & Veg\n\n| Ingredient |\n| --- |\n| Carrots |")],
+        pantry: parseTickTickCsv("title,column,createdTime\n\"❄️ Carrots — 8 pieces\",Fridge,2026-06-01T10:20:00Z\n"),
+        mealLogs: parseCookLog("Recipes/Ramen.md", "# Ramen\n## Cook Log\n- 2026-06-08 | ×2"),
+        preferences: parsePreferences("Preferences", "# Preferences\n- Favour older stock"),
+        tags: parseTagVocabulary("- Japanese"),
+      }));
+    } finally {
+      log.mockRestore();
+    }
+
+    expect(lines[0]).toBe("Dry run — no database writes made.");
+    expect(lines).toEqual(expect.arrayContaining([
+      expect.stringContaining("Convertible Units (2)"),
+      expect.stringContaining("Shops (1)"),
+      expect.stringContaining("Placements (1)"),
+      expect.stringContaining("Stock Lots (1)"),
+      expect.stringContaining("Historical Meal Logs (1)"),
+      expect.stringContaining("Preferences (1)"),
+    ]));
   });
 
   it("merges source formats into one deterministic plan without dropping a second Shop Placement", () => {
