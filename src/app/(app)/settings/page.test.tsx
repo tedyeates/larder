@@ -11,6 +11,9 @@ const listPreferences = vi.fn();
 const createPreference = vi.fn();
 const updatePreference = vi.fn();
 const deletePreference = vi.fn();
+const fetchAgentTokens = vi.fn();
+
+vi.stubGlobal("fetch", fetchAgentTokens);
 
 vi.mock("@/lib/preferences/preferences", () => ({
   listPreferences: (...args: unknown[]) => listPreferences(...args),
@@ -39,6 +42,10 @@ describe("SettingsPage (Preferences)", () => {
     createPreference.mockReset();
     updatePreference.mockReset();
     deletePreference.mockReset();
+    fetchAgentTokens.mockReset().mockResolvedValue({
+      ok: true,
+      json: async () => ({ tokens: [] }),
+    });
   });
 
   it("renders without crashing and shows loaded Preferences in the returned order", async () => {

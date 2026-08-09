@@ -17,6 +17,9 @@ importers:
       next:
         specifier: 15.5.9
         version: 15.5.9(@babel/core@7.29.7(supports-color@7.2.0))(@playwright/test@1.48.2)(react-dom@19.1.0(react@19.1.0))(react@19.1.0)
+      pg:
+        specifier: 8.13.1
+        version: 8.13.1
       react:
         specifier: 19.1.0
         version: 19.1.0
@@ -66,9 +69,6 @@ importers:
       jsdom:
         specifier: 25.0.1
         version: 25.0.1(supports-color@7.2.0)
-      pg:
-        specifier: 8.13.1
-        version: 8.13.1
       tailwindcss:
         specifier: ^4
         version: 4.3.3

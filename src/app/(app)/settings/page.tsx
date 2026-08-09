@@ -9,6 +9,7 @@ import {
   updatePreference,
 } from "@/lib/preferences/preferences";
 import type { Preference } from "@/lib/preferences/types";
+import { AgentTokensPanel } from "./agent-tokens";
 
 type LoadState = "loading" | "loaded" | "error";
 
@@ -102,6 +103,8 @@ export default function SettingsPage() {
           ))}
         </ul>
       )}
+
+      <AgentTokensPanel />
     </div>
   );
 }
