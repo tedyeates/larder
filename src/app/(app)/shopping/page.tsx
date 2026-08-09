@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type FormEvent, type PointerEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { listIngredients } from "@/lib/ingredients/registry";
 import { addPlacement, listAisles } from "@/lib/shops/shops";
@@ -21,6 +21,9 @@ import {
 
 type LoadState = "loading" | "loaded" | "error";
 type PurchaseInput = { purchasedAmount: number; storageLocation: StorageLocation; ingredientId: string };
+
+/** Pointer travel that separates a tap from a swipe, in CSS pixels. */
+const SWIPE_THRESHOLD_PX = 48;
 
 /**
  * One persistent Shopping List viewed through one Shop at a time. A tab is
@@ -335,13 +338,17 @@ function ShoppingItemRow({
   const [customOpen, setCustomOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [ignoreTap, setIgnoreTap] = useState(false);
+  // A completed swipe is followed by a synthetic click on some platforms and by
+  // nothing at all on others, so suppression lives in a ref cleared by the next
+  // pointerdown rather than in state: a stale flag would swallow a real tap.
+  const gestureHandled = useRef(false);
 
   useEffect(() => {
     setCustomAmount(String(suggestedAmount));
-  }, [selectedIndex, suggestedAmount]);
+  }, [suggestedAmount]);
 
   async function handleBuy(amount: number) {
+    if (busy) return;
     setBusy(true);
     setError(null);
     try {
@@ -385,6 +392,7 @@ function ShoppingItemRow({
   }
 
   function handlePointerDown(event: PointerEvent<HTMLLIElement>) {
+    gestureHandled.current = false;
     event.currentTarget.dataset.gestureStart = `${event.clientX}:${event.clientY}`;
   }
 
@@ -396,9 +404,9 @@ function ShoppingItemRow({
     const [startX, startY] = start.split(":").map(Number);
     const xDistance = event.clientX - startX;
     const yDistance = event.clientY - startY;
-    if (Math.max(Math.abs(xDistance), Math.abs(yDistance)) < 48) return;
+    if (Math.max(Math.abs(xDistance), Math.abs(yDistance)) < SWIPE_THRESHOLD_PX) return;
 
-    setIgnoreTap(true);
+    gestureHandled.current = true;
     if (Math.abs(xDistance) > Math.abs(yDistance)) {
       if (xDistance > 0) void handleBuy(suggestedAmount);
       else setActionsOpen(true);
@@ -408,10 +416,7 @@ function ShoppingItemRow({
   }
 
   function handleTap() {
-    if (ignoreTap) {
-      setIgnoreTap(false);
-      return;
-    }
+    if (gestureHandled.current) return;
     void handleBuy(suggestedAmount);
   }
 
@@ -425,7 +430,6 @@ function ShoppingItemRow({
       <div
         onClick={handleTap}
         className="cursor-pointer rounded-md p-2 transition-transform duration-150 ease-out active:scale-[0.98]"
-        aria-label={`Buy suggested amount of ${selected.ingredientName}`}
       >
         <div className="flex items-baseline justify-between gap-3">
           <span className="font-medium">{item.ingredientName}</span>
@@ -498,13 +502,18 @@ function ShoppingItemRow({
         ) : null}
       </div>
 
-      <div className={`grid overflow-hidden transition-all duration-200 ease-out ${actionsOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+      <div
+        aria-hidden={!actionsOpen}
+        inert={!actionsOpen}
+        className={`grid overflow-hidden transition-all duration-200 ease-out ${actionsOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}
+      >
         <div className="min-h-0">
           <div className="grid gap-2 rounded-md border border-foreground/15 p-3 sm:grid-cols-2">
             <label className="text-sm text-foreground/70" htmlFor={`buy-location-${item.id}`}>
               Store in
               <select
                 id={`buy-location-${item.id}`}
+                aria-label={`Storage Location for ${item.ingredientName}`}
                 value={storageLocation}
                 onChange={(event) => setStorageLocation(event.target.value as StorageLocation)}
                 className="mt-1 w-full rounded-md border border-foreground/20 bg-transparent px-3 py-2 text-sm"

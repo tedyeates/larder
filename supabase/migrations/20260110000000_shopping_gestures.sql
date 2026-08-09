@@ -74,7 +74,38 @@ comment on function public.buy_shopping_item(uuid, numeric, public.storage_locat
 create or replace view public.shopping_list_by_shop
 with (security_invoker = true)
 as
-with item_sections as (
+with substitute_options as (
+  -- One row per (listed Ingredient, acceptable stand-in). Drawn from every
+  -- non-Essential Recipe Line naming that Ingredient: the shared List keeps no
+  -- provenance back to the Recipe that added the line, so every Recipe that
+  -- could have put it there contributes its own approved alternatives.
+  select distinct
+    line.ingredient_id as listed_ingredient_id,
+    substitute_ingredient.id as ingredient_id,
+    substitute_ingredient.name as ingredient_name,
+    substitute_ingredient.stock_unit,
+    substitute_ingredient.last_purchased_amount
+  from public.recipe_lines line
+  join public.recipe_line_substitutes substitute
+    on substitute.recipe_line_id = line.id
+  join public.ingredients substitute_ingredient
+    on substitute_ingredient.id = substitute.ingredient_id
+  where not line.is_essential
+    and substitute.ingredient_id <> line.ingredient_id
+),
+substitutes_by_ingredient as (
+  select
+    listed_ingredient_id,
+    jsonb_agg(jsonb_build_object(
+      'ingredient_id', ingredient_id,
+      'ingredient_name', ingredient_name,
+      'stock_unit', stock_unit,
+      'last_purchased_amount', last_purchased_amount
+    ) order by ingredient_name) as substitutes
+  from substitute_options
+  group by listed_ingredient_id
+),
+item_sections as (
   select
     s.id as shop_id,
     a.id as section_id,
@@ -88,31 +119,10 @@ with item_sections as (
     i.stock_unit,
     si.required_amount,
     i.last_purchased_amount,
-    coalesce((
-      select jsonb_agg(jsonb_build_object(
-        'ingredient_id', candidate.ingredient_id,
-        'ingredient_name', candidate.ingredient_name,
-        'stock_unit', candidate.stock_unit,
-        'last_purchased_amount', candidate.last_purchased_amount
-      ) order by candidate.ingredient_name)
-      from (
-        select distinct
-          substitute_ingredient.id as ingredient_id,
-          substitute_ingredient.name as ingredient_name,
-          substitute_ingredient.stock_unit,
-          substitute_ingredient.last_purchased_amount
-        from public.recipe_lines line
-        join public.recipe_line_substitutes substitute
-          on substitute.recipe_line_id = line.id
-        join public.ingredients substitute_ingredient
-          on substitute_ingredient.id = substitute.ingredient_id
-        where line.ingredient_id = si.ingredient_id
-          and not line.is_essential
-          and substitute.ingredient_id <> si.ingredient_id
-      ) candidate
-    ), '[]'::jsonb) as substitutes
+    coalesce(sub.substitutes, '[]'::jsonb) as substitutes
   from public.shopping_items si
   join public.ingredients i on i.id = si.ingredient_id
+  left join substitutes_by_ingredient sub on sub.listed_ingredient_id = si.ingredient_id
   join public.placements p on p.ingredient_id = si.ingredient_id
   join public.aisles a on a.id = p.aisle_id
   join public.shops s on s.id = a.shop_id
@@ -130,31 +140,10 @@ with item_sections as (
     i.stock_unit,
     si.required_amount,
     i.last_purchased_amount,
-    coalesce((
-      select jsonb_agg(jsonb_build_object(
-        'ingredient_id', candidate.ingredient_id,
-        'ingredient_name', candidate.ingredient_name,
-        'stock_unit', candidate.stock_unit,
-        'last_purchased_amount', candidate.last_purchased_amount
-      ) order by candidate.ingredient_name)
-      from (
-        select distinct
-          substitute_ingredient.id as ingredient_id,
-          substitute_ingredient.name as ingredient_name,
-          substitute_ingredient.stock_unit,
-          substitute_ingredient.last_purchased_amount
-        from public.recipe_lines line
-        join public.recipe_line_substitutes substitute
-          on substitute.recipe_line_id = line.id
-        join public.ingredients substitute_ingredient
-          on substitute_ingredient.id = substitute.ingredient_id
-        where line.ingredient_id = si.ingredient_id
-          and not line.is_essential
-          and substitute.ingredient_id <> si.ingredient_id
-      ) candidate
-    ), '[]'::jsonb) as substitutes
+    coalesce(sub.substitutes, '[]'::jsonb) as substitutes
   from public.shopping_items si
   join public.ingredients i on i.id = si.ingredient_id
+  left join substitutes_by_ingredient sub on sub.listed_ingredient_id = si.ingredient_id
   cross join public.shops s
   where not exists (
     select 1 from public.placements p where p.ingredient_id = si.ingredient_id

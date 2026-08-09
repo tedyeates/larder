@@ -1,5 +1,5 @@
 begin;
-select plan(18);
+select plan(20);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000000080', 'shopping@example.com')
@@ -192,6 +192,34 @@ select results_eq(
   $$,
   $$values ('80000000-0000-0000-0000-000000000005'::uuid, 100::numeric)$$,
   'buying a selected Substitute stocks it instead of the required Ingredient'
+);
+
+-- Re-list Mirin: the buy above removed the line it was bought through.
+select public.add_shopping_item('80000000-0000-0000-0000-000000000004', 30);
+
+select results_eq(
+  $$
+    select distinct
+      jsonb_array_length(substitutes),
+      substitutes -> 0 ->> 'ingredient_name',
+      (substitutes -> 0 ->> 'last_purchased_amount')::numeric
+    from public.shopping_list_by_shop
+    where ingredient_id = '80000000-0000-0000-0000-000000000004'
+  $$,
+  $$values (1, 'Rice wine'::text, 100::numeric)$$,
+  'the projection carries each Item''s Recipe-approved Substitutes and their Suggested Amounts'
+);
+
+select throws_like(
+  $$select public.buy_shopping_item(
+      (select id from public.shopping_items where ingredient_id = '80000000-0000-0000-0000-000000000004'),
+      100,
+      'cupboard',
+      '2026-08-09',
+      '80000000-0000-0000-0000-000000000002'
+    )$$,
+  '%is not an allowed Substitute%',
+  'buying refuses an Ingredient no Recipe Line approves as a Substitute for the line'
 );
 
 reset role;

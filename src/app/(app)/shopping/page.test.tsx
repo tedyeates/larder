@@ -133,6 +133,13 @@ function swipe(element: Element, from: { x: number; y: number }, to: { x: number
   fireEvent(element, new MouseEvent("pointerup", { bubbles: true, clientX: to.x, clientY: to.y }));
 }
 
+/** A real tap: the pointer pair a phone sends before the click, on the same spot. */
+function tap(element: Element, at: { x: number; y: number }) {
+  fireEvent(element, new MouseEvent("pointerdown", { bubbles: true, clientX: at.x, clientY: at.y }));
+  fireEvent(element, new MouseEvent("pointerup", { bubbles: true, clientX: at.x, clientY: at.y }));
+  fireEvent.click(element);
+}
+
 describe("ShoppingPage", () => {
   beforeEach(() => {
     listShoppingList.mockReset().mockResolvedValue(shops);
@@ -233,6 +240,8 @@ describe("ShoppingPage", () => {
   it("swipe-left reveals buy Required Amount action", async () => {
     const chicken = await renderLoadedPage();
 
+    expect(within(chicken).queryByRole("button", { name: "Buy required amount" })).not.toBeInTheDocument();
+
     swipe(chicken, { x: 100, y: 20 }, { x: 10, y: 20 });
     fireEvent.click(await within(chicken).findByRole("button", { name: "Buy required amount" }));
 
@@ -240,6 +249,32 @@ describe("ShoppingPage", () => {
       purchasedAmount: 4,
       storageLocation: "cupboard",
       ingredientId: "i1",
+    }));
+  });
+
+  it("leaves a tap under the swipe threshold banking the Suggested Amount", async () => {
+    const chicken = await renderLoadedPage();
+    const label = within(chicken).getByText("Chicken thighs");
+
+    swipe(chicken, { x: 10, y: 20 }, { x: 40, y: 20 });
+    expect(buyShoppingItem).not.toHaveBeenCalled();
+    expect(within(chicken).queryByRole("button", { name: "Buy required amount" })).not.toBeInTheDocument();
+
+    fireEvent.click(label);
+
+    await waitFor(() => expect(buyShoppingItem).toHaveBeenCalledTimes(1));
+  });
+
+  it("still banks on the tap that follows a substitute swipe", async () => {
+    const chicken = await renderLoadedPage();
+
+    swipe(chicken, { x: 50, y: 100 }, { x: 50, y: 10 });
+    tap(within(chicken).getByText("Chicken thighs"), { x: 50, y: 20 });
+
+    await waitFor(() => expect(buyShoppingItem).toHaveBeenCalledWith({}, "si1", {
+      purchasedAmount: 10,
+      storageLocation: "cupboard",
+      ingredientId: "i3",
     }));
   });
 
