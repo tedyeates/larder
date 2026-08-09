@@ -1,0 +1,2 @@
+-- No seed data for the foundation ticket. Later tickets may seed reference
+-- data here (e.g. default Storage Locations).
