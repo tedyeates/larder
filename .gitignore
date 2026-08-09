@@ -23,3 +23,6 @@ next-env.d.ts
 
 # supabase CLI
 /supabase/.temp/
+
+# kiro local session state
+.kiro/settings/
