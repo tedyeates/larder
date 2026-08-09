@@ -243,4 +243,119 @@ describe("RecipeDetailPage", () => {
     fireEvent.click(screen.getByText("← Recipes"));
     expect(push).toHaveBeenCalledWith("/recipes");
   });
+
+  it("adds a Recipe Line from the Editing view", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.change(screen.getByLabelText("Ingredient"), { target: { value: "i-rice-wine" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "100" } });
+    fireEvent.change(screen.getByLabelText("Unit"), { target: { value: "ml" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add line" }));
+
+    await waitFor(() =>
+      expect(addLine).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({
+          recipeId: "r1",
+          ingredientId: "i-rice-wine",
+          amount: 100,
+          unit: "ml",
+        })
+      )
+    );
+  });
+
+  it("toggles Essential on a Recipe Line", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    const essentialCheckboxes = screen.getAllByRole("checkbox", { name: "Essential" });
+    fireEvent.click(essentialCheckboxes[0]);
+
+    await waitFor(() =>
+      expect(updateLine).toHaveBeenCalledWith(
+        {},
+        "l1",
+        expect.objectContaining({ isEssential: true })
+      )
+    );
+  });
+
+  it("removes a Recipe Line", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Delete" })[0]);
+
+    await waitFor(() => expect(removeLine).toHaveBeenCalledWith({}, "l1"));
+  });
+
+  it("reorders Recipe Lines with the move-down control", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(screen.getAllByLabelText("Move line down")[0]);
+
+    await waitFor(() =>
+      expect(reorderLines).toHaveBeenCalledWith({}, "r1", ["l2", "l1"])
+    );
+  });
+
+  it("resolves an Unresolved line to a ranked candidate, remembering an Alias", async () => {
+    resolveIngredientName.mockResolvedValue({
+      resolved: false,
+      candidates: [{ ingredientId: "i-mirin", name: "Mirin", matchKind: "fuzzy", score: 0.8 }],
+    });
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
+    const candidateButton = await screen.findByRole("button", { name: /Mirin \(80%\)/ });
+    fireEvent.click(candidateButton);
+
+    await waitFor(() =>
+      expect(resolveLine).toHaveBeenCalledWith({}, "l2", "i-mirin", true)
+    );
+  });
+
+  it("adds a Substitute for a non-Essential Recipe Line", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Substitutes" }));
+    const substituteForm = screen.getByLabelText("Add a Substitute").closest("form");
+    if (!substituteForm) throw new Error("Substitute form is missing");
+    fireEvent.change(within(substituteForm).getByLabelText("Add a Substitute"), {
+      target: { value: "i-rice-wine" },
+    });
+    fireEvent.click(within(substituteForm).getByRole("button", { name: "Add" }));
+
+    await waitFor(() =>
+      expect(addSubstitute).toHaveBeenCalledWith({}, "l1", "i-rice-wine")
+    );
+  });
+
+  it("suppresses the Substitute form on an Essential line", async () => {
+    getRecipeWithLines.mockResolvedValue({
+      ...stirFry,
+      lines: [{ ...mirinLine, isEssential: true }, unresolvedLine],
+    });
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Substitutes" }));
+
+    expect(
+      screen.getByText(/Essential lines never offer a Substitute/)
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Add a Substitute")).not.toBeInTheDocument();
+  });
 });
