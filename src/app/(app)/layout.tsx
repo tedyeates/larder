@@ -1,5 +1,8 @@
 import { AppNav } from "@/components/app-nav";
 import { SignOutButton } from "@/components/sign-out-button";
+import { isAgentRunnerConfigured } from "@/lib/planner/config";
+
+export const dynamic = "force-dynamic";
 
 /**
  * Shell shared by every authenticated page: header with sign-out, nav that
@@ -14,7 +17,7 @@ export default function AppLayout({
 }) {
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <AppNav />
+      <AppNav plannerAvailable={isAgentRunnerConfigured()} />
       <div className="flex flex-1 flex-col">
         <header className="flex items-center justify-between border-b border-foreground/10 px-4 py-3">
           <span className="text-lg font-semibold">Larder</span>

@@ -20,9 +20,12 @@ function activeHref(pathname: string, hrefs: string[]) {
  * tab bar on narrow ones — same links, same markup, CSS-only layout switch
  * so there is exactly one nav to test.
  */
-export function AppNav() {
+export function AppNav({ plannerAvailable = false }: { plannerAvailable?: boolean }) {
   const pathname = usePathname();
-  const current = activeHref(pathname, NAV_ITEMS.map((item) => item.href));
+  const items = plannerAvailable
+    ? [{ href: "/planner", label: "Planner" }, ...NAV_ITEMS]
+    : NAV_ITEMS;
+  const current = activeHref(pathname, items.map((item) => item.href));
 
   return (
     <nav
@@ -30,7 +33,7 @@ export function AppNav() {
       className="border-foreground/10 md:h-screen md:w-56 md:border-r md:p-4 fixed bottom-0 left-0 right-0 border-t bg-background md:sticky md:top-0 md:border-t-0"
     >
       <ul className="flex justify-around md:flex-col md:justify-start md:gap-1">
-        {NAV_ITEMS.map((item) => {
+        {items.map((item) => {
           const active = item.href === current;
           return (
             <li key={item.href} className="flex-1 md:flex-none">

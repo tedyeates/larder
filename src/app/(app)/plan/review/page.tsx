@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { PlanProposalReview } from "@/components/plan-proposal-review";
 import { createClient } from "@/lib/supabase/client";
+import { notifyPlannerOfRejectedProposal } from "@/lib/planner/revisions";
 import {
   confirmPlanProposal,
   listPlanProposals,
@@ -42,6 +43,19 @@ export default function PlanProposalReviewPage() {
     }
   }
 
+  async function rejectAndNotify(id: string, comment: string) {
+    await rejectPlanProposal(createClient(), id, comment);
+    try {
+      await notifyPlannerOfRejectedProposal(id, comment);
+    } catch (notificationError) {
+      // Rejection is already durable. Refresh review so a transient Runner
+      // failure never makes it look as though the deterministic action failed.
+      await refresh();
+      const detail = notificationError instanceof Error ? notificationError.message : "Planner notification failed";
+      throw new Error(`Plan Proposal was rejected, but could not reach Planner: ${detail}`);
+    }
+  }
+
   return (
     <div className="space-y-5">
       <div>
@@ -51,7 +65,7 @@ export default function PlanProposalReviewPage() {
       {state === "loading" ? <p className="text-sm text-foreground/60">Loading Plan Proposals…</p> : null}
       {state === "error" ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
       {state === "loaded" && proposals.every((proposal) => proposal.status !== "review") ? <p className="text-sm text-foreground/60">No Plan Proposals awaiting review.</p> : null}
-      {state === "loaded" ? <PlanProposalReview proposals={proposals} onConfirm={(id) => run(() => confirmPlanProposal(createClient(), id))} onReject={(id, comment) => run(() => rejectPlanProposal(createClient(), id, comment))} /> : null}
+      {state === "loaded" ? <PlanProposalReview proposals={proposals} onConfirm={(id) => run(() => confirmPlanProposal(createClient(), id))} onReject={(id, comment) => run(() => rejectAndNotify(id, comment))} /> : null}
     </div>
   );
 }

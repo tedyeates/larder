@@ -36,4 +36,13 @@ describe("AppNav", () => {
     expect(screen.getByRole("link", { name: "Resolve" })).toHaveAttribute("aria-current", "page");
     expect(screen.getByRole("link", { name: "Recipes" })).not.toHaveAttribute("aria-current");
   });
+
+  it("hides Planner unless an Agent Runner is configured", () => {
+    const unavailable = render(<AppNav />);
+    expect(screen.queryByRole("link", { name: "Planner" })).not.toBeInTheDocument();
+    unavailable.unmount();
+
+    render(<AppNav plannerAvailable />);
+    expect(screen.getByRole("link", { name: "Planner" })).toHaveAttribute("href", "/planner");
+  });
 });

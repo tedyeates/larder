@@ -6,10 +6,14 @@ vi.mock("@/lib/supabase/client", () => ({ createClient: () => ({}) }));
 const listPlanProposals = vi.fn();
 const confirmPlanProposal = vi.fn();
 const rejectPlanProposal = vi.fn();
+const notifyPlannerOfRejectedProposal = vi.fn();
 vi.mock("@/lib/plan/proposals", () => ({
   listPlanProposals: (...args: unknown[]) => listPlanProposals(...args),
   confirmPlanProposal: (...args: unknown[]) => confirmPlanProposal(...args),
   rejectPlanProposal: (...args: unknown[]) => rejectPlanProposal(...args),
+}));
+vi.mock("@/lib/planner/revisions", () => ({
+  notifyPlannerOfRejectedProposal: (...args: unknown[]) => notifyPlannerOfRejectedProposal(...args),
 }));
 
 const proposal = {
@@ -53,7 +57,10 @@ describe("PlanProposalReviewPage", () => {
     await screen.findByText("Bean chili");
     fireEvent.change(screen.getByLabelText("Rejection comments for proposal-1"), { target: { value: "Keep Thursday empty" } });
     fireEvent.click(screen.getByRole("button", { name: "Reject with comments" }));
-    await waitFor(() => expect(rejectPlanProposal).toHaveBeenCalledWith({}, "proposal-1", "Keep Thursday empty"));
+    await waitFor(() => {
+      expect(rejectPlanProposal).toHaveBeenCalledWith({}, "proposal-1", "Keep Thursday empty");
+      expect(notifyPlannerOfRejectedProposal).toHaveBeenCalledWith("proposal-1", "Keep Thursday empty");
+    });
   });
 
   it("renders loading, error, and empty proposal states", async () => {

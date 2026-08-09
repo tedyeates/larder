@@ -61,3 +61,10 @@ Format: `- ❌ [what wrong] → ✅ [fix] (brief reason)`
 - ❌ Sent parallel mutations to one gateway file → ✅ merge related same-file edits into one mutation (parallel writes risk races and violate atomic edit workflow)
 - ❌ Applied only a new migration to shared DATABASE_URL without verifying prior schema → ✅ apply full migration chain in order when foundational RPCs are absent (shared database may be empty)
 - ❌ Retried staging task files after prior sandbox evidence that mutating git may be blocked → ✅ after one staging rejection, leave changes unstaged and report commit blocked (sandbox allowlist differs from read-only git)
+- ❌ Sent separate parallel mutations to `src/app/(app)/layout.tsx` for one logical change → ✅ merge all same-file changes into one edit before dispatch (avoids races and preserves atomic file workflow)
+- ❌ Added a review-page import separately before its related behavior → ✅ batch all known changes to a target file in one mutation before dispatch (atomic edits prevent partial implementations)
+- ❌ Repeated parallel same-file edits while wiring proposal review rejection → ✅ prepare one full replacement per target file before dispatch (same-file mutations cannot be parallelised)
+- ❌ Used TypeScript `type` import syntax in a `.mjs` runner file → ✅ use plain JavaScript imports in `.mjs` (Node cannot parse TypeScript-only syntax)
+- ❌ Ran `node --check` for Agent Runner validation after shell allowlist rejection → ✅ after one rejected execute_bash command, use LSP diagnostics and static review; do not retry command variants
+- ❌ Batched a read of a newly-created file with its create operation → ✅ create dependent files first, then inspect in a later tool call (parallel validation runs before mutations)
+- ❌ Applied a string replacement against stale review-test text → ✅ inspect current file before patching after prior mutations (exact-match edits require fresh context)

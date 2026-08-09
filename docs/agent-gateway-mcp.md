@@ -50,8 +50,9 @@ curl -sS "$LARDER_URL/api/mcp" \
 | `larder_create_preference` | write | `preference`; input `{ "body": string, "category"?: string \| null }` |
 | `larder_update_preference` | write | `preference`; input `{ "id": string, "body"?: string, "category"?: string \| null }` |
 | `larder_delete_preference` | write | `deletedPreferenceId`; input `{ "id": string }` |
+| `larder_submit_plan_proposal` | write | Plan Check result; input complete proposal bundle plus optional `proposalId` for resubmission |
 
-Only Preference tools write in this version. There are no tools that write Stock Lots, Portion Batches, Meal Log entries, Shopping Items, Recipes, or Meal Slots. An undocumented or forbidden name returns HTTP `403` and JSON-RPC error code `-32003`; the route never accepts arbitrary SQL, RPC names, table names, or client-supplied write paths.
+Preference tools and `larder_submit_plan_proposal` are the only writes in this version. A Runner can submit or resubmit a reviewable proposal, but it cannot confirm one or write Stock Lots, Portion Batches, Meal Log entries, Shopping Items, Recipes, or Meal Slots directly. An undocumented or forbidden name returns HTTP `403` and JSON-RPC error code `-32003`; the route never accepts arbitrary SQL, RPC names, table names, or client-supplied write paths.
 
 The Pantry and Meal Stock outputs are summaries. They intentionally do not expose individual Stock Lots or Portion Batches.
 
