@@ -26,9 +26,11 @@ const mealSlotId = randomUUID();
 const shoppingItemId = randomUUID();
 const tokenId = randomUUID();
 const revokedTokenId = randomUUID();
+const immediatelyRevokedTokenId = randomUUID();
 const fixtureName = `Agent Gateway ${randomUUID()}`;
 const validToken = `agt_${randomBytes(32).toString("base64url")}`;
 const revokedToken = `agt_${randomBytes(32).toString("base64url")}`;
+const immediatelyRevokedToken = `agt_${randomBytes(32).toString("base64url")}`;
 
 let database: Pool;
 
@@ -70,8 +72,17 @@ describe("POST /api/mcp", () => {
     await database.query(
       `insert into public.agent_tokens (id, user_id, token_hash, label, revoked_at)
        values ($1, $2, $3, 'test runner', null),
-              ($4, $2, $5, 'revoked runner', now())`,
-      [tokenId, userId, hashAgentToken(validToken), revokedTokenId, hashAgentToken(revokedToken)]
+              ($4, $2, $5, 'revoked runner', now()),
+              ($6, $2, $7, 'immediately revoked runner', null)`,
+      [
+        tokenId,
+        userId,
+        hashAgentToken(validToken),
+        revokedTokenId,
+        hashAgentToken(revokedToken),
+        immediatelyRevokedTokenId,
+        hashAgentToken(immediatelyRevokedToken),
+      ]
     );
     await database.query(
       `insert into public.ingredients (id, name, stock_unit, is_hand_depleted)
@@ -132,7 +143,11 @@ describe("POST /api/mcp", () => {
     await database.query("delete from public.recipes where id = $1", [recipeId]);
     await database.query("delete from public.ingredients where id = $1", [ingredientId]);
     await database.query("delete from public.preferences where id = $1", [preferenceId]);
-    await database.query("delete from public.agent_tokens where id in ($1, $2)", [tokenId, revokedTokenId]);
+    await database.query("delete from public.agent_tokens where id in ($1, $2, $3)", [
+      tokenId,
+      revokedTokenId,
+      immediatelyRevokedTokenId,
+    ]);
     await database.query("delete from auth.users where id = $1", [userId]);
     await database.end();
   });
@@ -161,6 +176,21 @@ describe("POST /api/mcp", () => {
     const response = await request({ method: "tools/list" }, revokedToken);
     expect(response.status).toBe(401);
     await expect(rpc(response)).resolves.toMatchObject({
+      error: { code: -32001, message: "Invalid or revoked Agent Token" },
+    });
+  });
+
+  it("rejects a formerly active Agent Token on its next request after revocation", async () => {
+    const activeResponse = await request({ method: "tools/list" }, immediatelyRevokedToken);
+    expect(activeResponse.status).toBe(200);
+
+    await database.query("update public.agent_tokens set revoked_at = now() where id = $1", [
+      immediatelyRevokedTokenId,
+    ]);
+
+    const revokedResponse = await request({ method: "tools/list" }, immediatelyRevokedToken);
+    expect(revokedResponse.status).toBe(401);
+    await expect(rpc(revokedResponse)).resolves.toMatchObject({
       error: { code: -32001, message: "Invalid or revoked Agent Token" },
     });
   });
