@@ -81,7 +81,7 @@ select is(
 reset role;
 
 select ok(
-  'security_invoker=true' = any(
+  'security_invoker=on' = any(
     coalesce((select reloptions from pg_class where oid = 'public.pantry_summary'::regclass), '{}'::text[])
   ),
   'Pantry summary reads with caller RLS rather than its view owner privileges'
