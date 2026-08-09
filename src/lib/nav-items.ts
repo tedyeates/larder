@@ -7,6 +7,7 @@ export const NAV_ITEMS: NavItem[] = [
   { href: "/plan", label: "Plan" },
   { href: "/shopping", label: "Shopping" },
   { href: "/pantry", label: "Pantry" },
+  { href: "/meals", label: "Meals" },
   { href: "/recipes", label: "Recipes" },
   { href: "/ingredients", label: "Ingredients" },
   { href: "/shops", label: "Shops" },
