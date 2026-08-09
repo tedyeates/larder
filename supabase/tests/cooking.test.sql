@@ -1,6 +1,6 @@
 -- Cooking and Meal Stock (#10): preview and commit share one database module.
 begin;
-select plan(14);
+select plan(18);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000000100', 'cooking@example.com')
@@ -9,7 +9,8 @@ on conflict (id) do nothing;
 insert into public.ingredients (id, name, stock_unit, is_hand_depleted) values
   ('10000000-0000-0000-0000-000000000001', 'Chicken', 'pieces', false),
   ('10000000-0000-0000-0000-000000000002', 'Mirin', 'ml', false),
-  ('10000000-0000-0000-0000-000000000003', 'Rice wine', 'ml', false)
+  ('10000000-0000-0000-0000-000000000003', 'Rice wine', 'ml', false),
+  ('10000000-0000-0000-0000-000000000004', 'Soy sauce', 'bottle', true)
 on conflict (id) do nothing;
 
 set local role authenticated;
@@ -127,6 +128,44 @@ select is(
   (select portions_remaining from public.portion_batches where id = :'ready_batch'::uuid),
   2,
   'Ate Out does not deplete any Portion Batch'
+);
+
+-- Eating without naming a Batch must pick the oldest non-empty Batch itself,
+-- skipping the drained 2026-08-01 one.
+select public.add_portion_batch('10000000-0000-0000-0000-000000000010', null, 2, 'fridge', '2026-08-02');
+select public.eat_portion(p_recipe_id => '10000000-0000-0000-0000-000000000010', p_occurred_on => '2026-08-04');
+select is(
+  (select portions_remaining from public.portion_batches
+   where recipe_id = '10000000-0000-0000-0000-000000000010' and cooked_on = '2026-08-02'),
+  1,
+  'eating by Recipe consumes the oldest Batch that still has Portions'
+);
+select is(
+  (select portions_remaining from public.portion_batches
+   where recipe_id = '10000000-0000-0000-0000-000000000010' and cooked_on = '2026-08-03'),
+  4,
+  'eating by Recipe leaves newer Batches untouched'
+);
+
+-- A Hand-Depleted Ingredient is never automatically consumed, and its presence
+-- must not stop the Cook: the app never blocks a Cook.
+select public.create_recipe_line(
+  '10000000-0000-0000-0000-000000000010', '10000000-0000-0000-0000-000000000004', null, 0.2, 'bottle'
+);
+select public.set_hand_depleted_fraction(
+  '10000000-0000-0000-0000-000000000004', 0.5, 'cupboard', '2026-08-01'
+);
+select public.commit_cook('10000000-0000-0000-0000-000000000010', 1, '[]'::jsonb, '2026-08-05');
+select is(
+  (select portions_remaining from public.portion_batches
+   where recipe_id = '10000000-0000-0000-0000-000000000010' and cooked_on = '2026-08-05'),
+  2,
+  'a Cook with an empty Pantry and a Hand-Depleted line still produces its Portions'
+);
+select is(
+  (select quantity from public.stock_lots where ingredient_id = '10000000-0000-0000-0000-000000000004'),
+  0.5::numeric,
+  'a Cook never depletes a Hand-Depleted Ingredient'
 );
 
 select * from finish();

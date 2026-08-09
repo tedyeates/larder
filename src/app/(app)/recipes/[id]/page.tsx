@@ -21,6 +21,7 @@ import {
   updateRecipe,
 } from "@/lib/recipes/recipes";
 import { createIngredient, listIngredients, resolveIngredientName } from "@/lib/ingredients/registry";
+import { commitCook, previewCook, type CookPreview } from "@/lib/meals";
 import type { Ingredient, IngredientCandidate } from "@/lib/ingredients/types";
 import {
   INCONSISTENCY_REASON_LABELS,
@@ -102,128 +103,6 @@ export default function RecipeDetailPage() {
   );
   const allergenFlags = allergenFlagsFromTags(recipe.tags);
 
-  type CookPreviewData = {
-    lines: Array<{
-      recipeLineId: string;
-      ingredientName: string;
-      stockUnit: string | null;
-      requested: number;
-      willDeplete: number;
-      shortfall: number;
-      issue: string | null;
-    }>;
-    portionsProduced: number;
-  };
-
-  function CookPanel({ recipe }: { recipe: RecipeWithLines }) {
-    const [multiplier, setMultiplier] = useState("1");
-    const [substitutes, setSubstitutes] = useState<Record<string, string>>({});
-    const [preview, setPreview] = useState<CookPreviewData | null>(null);
-    const [busy, setBusy] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-
-    const choices = () => Object.entries(substitutes)
-      .filter(([, substituteIngredientId]) => substituteIngredientId !== "")
-      .map(([recipeLineId, substituteIngredientId]) => ({ recipeLineId, substituteIngredientId }));
-
-    async function showPreview() {
-      setBusy(true);
-      setError(null);
-      try {
-        const { previewCook } = await import("@/lib/meals");
-        const result = await previewCook(createClient(), {
-          recipeId: recipe.id,
-          multiplier: Number(multiplier),
-          substitutions: choices(),
-        });
-        setPreview(result);
-      } catch (previewError) {
-        setError(previewError instanceof Error ? previewError.message : "Failed to preview Cook");
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    async function commit() {
-      setBusy(true);
-      setError(null);
-      try {
-        const { commitCook } = await import("@/lib/meals");
-        await commitCook(createClient(), {
-          recipeId: recipe.id,
-          multiplier: Number(multiplier),
-          substitutions: choices(),
-        });
-        setPreview(null);
-        await refresh();
-      } catch (commitError) {
-        setError(commitError instanceof Error ? commitError.message : "Failed to cook Recipe");
-      } finally {
-        setBusy(false);
-      }
-    }
-
-    const discrepancies = preview?.lines.filter(
-      (line) => line.shortfall > 0 || (line.issue !== null && line.issue !== "hand_depleted")
-    ) ?? [];
-
-    return (
-      <section className="space-y-3 rounded-md border border-foreground/10 p-4" aria-label="Cook this Recipe">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <h2 className="text-sm font-semibold">Cook</h2>
-            <p className="text-xs text-foreground/60">Off-plan cooking updates Pantry and Meal Stock.</p>
-          </div>
-          <label className="text-sm">Multiplier
-            <input
-              aria-label="Cook multiplier"
-              type="number"
-              min="1"
-              max={recipe.maxMultiplier}
-              value={multiplier}
-              onChange={(event) => { setMultiplier(event.target.value); setPreview(null); }}
-              className="ml-2 w-16 rounded-md border border-foreground/20 bg-transparent px-2 py-1"
-            />
-          </label>
-        </div>
-
-        {recipe.lines.filter((line) => !line.isEssential && line.substitutes.length > 0).map((line) => (
-          <label key={line.id} className="block text-sm">
-            Use substitute for {line.ingredientName ?? line.rawName}
-            <select
-              aria-label={`Use substitute for ${line.ingredientName ?? line.rawName}`}
-              value={substitutes[line.id] ?? ""}
-              onChange={(event) => { setSubstitutes((current) => ({ ...current, [line.id]: event.target.value })); setPreview(null); }}
-              className="ml-2 rounded-md border border-foreground/20 bg-transparent px-2 py-1 text-sm"
-            >
-              <option value="">Use named Ingredient</option>
-              {line.substitutes.map((substitute) => <option key={substitute.id} value={substitute.ingredientId}>{substitute.ingredientName}</option>)}
-            </select>
-          </label>
-        ))}
-
-        {!preview ? <button type="button" onClick={showPreview} disabled={busy} className="rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50">{busy ? "Previewing…" : "Preview Cook"}</button> : (
-          <div className="space-y-3 rounded-md bg-foreground/5 p-3">
-            <p className="text-sm font-medium">Makes {preview.portionsProduced} Portions</p>
-            <ul className="space-y-1 text-sm">
-              {preview.lines.map((line) => <li key={line.recipeLineId}>
-                {line.ingredientName}: deplete {line.willDeplete} {line.stockUnit ?? ""}
-                {line.shortfall > 0 ? <span className="text-amber-700"> — Short by {line.shortfall} {line.stockUnit ?? ""}</span> : null}
-                {line.issue && line.issue !== "hand_depleted" ? <span className="text-amber-700"> — {line.issue.replaceAll("_", " ")}</span> : null}
-              </li>)}
-            </ul>
-            {discrepancies.length > 0 ? <p role="alert" className="text-sm text-amber-700">Pantry discrepancies above will be clamped at zero.</p> : <p className="text-sm text-green-700">Pantry amounts cover this Cook.</p>}
-            <div className="flex gap-2">
-              <button type="button" onClick={commit} disabled={busy} className="rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50">{busy ? "Cooking…" : "Cook anyway"}</button>
-              <button type="button" onClick={() => setPreview(null)} disabled={busy} className="rounded-md border border-foreground/20 px-3 py-2 text-sm">Change</button>
-            </div>
-          </div>
-        )}
-        {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
-      </section>
-    );
-  }
-
   return (
     <div className="space-y-6 pb-16">
       <div className="flex items-start justify-between gap-2">
@@ -268,7 +147,7 @@ export default function RecipeDetailPage() {
         }}
       />
 
-      <CookPanel recipe={recipe} />
+      <CookPanel recipe={recipe} onCooked={refresh} />
 
       {inconsistencies.length > 0 ? (
         <InconsistencyList inconsistencies={inconsistencies} />
@@ -284,6 +163,113 @@ export default function RecipeDetailPage() {
         />
       )}
     </div>
+  );
+}
+
+function CookPanel({ recipe, onCooked }: { recipe: RecipeWithLines; onCooked: () => Promise<void> }) {
+  const [multiplier, setMultiplier] = useState("1");
+  const [substitutes, setSubstitutes] = useState<Record<string, string>>({});
+  const [preview, setPreview] = useState<CookPreview | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const choices = () => Object.entries(substitutes)
+    .filter(([, substituteIngredientId]) => substituteIngredientId !== "")
+    .map(([recipeLineId, substituteIngredientId]) => ({ recipeLineId, substituteIngredientId }));
+
+  async function showPreview() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await previewCook(createClient(), {
+        recipeId: recipe.id,
+        multiplier: Number(multiplier),
+        substitutions: choices(),
+      });
+      setPreview(result);
+    } catch (previewError) {
+      setError(previewError instanceof Error ? previewError.message : "Failed to preview Cook");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await commitCook(createClient(), {
+        recipeId: recipe.id,
+        multiplier: Number(multiplier),
+        substitutions: choices(),
+      });
+      setPreview(null);
+      await onCooked();
+    } catch (commitError) {
+      setError(commitError instanceof Error ? commitError.message : "Failed to cook Recipe");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const discrepancies = preview?.lines.filter(
+    (line) => line.shortfall > 0 || (line.issue !== null && line.issue !== "hand_depleted")
+  ) ?? [];
+
+  return (
+    <section className="space-y-3 rounded-md border border-foreground/10 p-4" aria-label="Cook this Recipe">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="text-sm font-semibold">Cook</h2>
+          <p className="text-xs text-foreground/60">Off-plan cooking updates Pantry and Meal Stock.</p>
+        </div>
+        <label className="text-sm">Multiplier
+          <input
+            aria-label="Cook multiplier"
+            type="number"
+            min="1"
+            max={recipe.maxMultiplier}
+            value={multiplier}
+            onChange={(event) => { setMultiplier(event.target.value); setPreview(null); }}
+            className="ml-2 w-16 rounded-md border border-foreground/20 bg-transparent px-2 py-1"
+          />
+        </label>
+      </div>
+
+      {recipe.lines.filter((line) => !line.isEssential && line.substitutes.length > 0).map((line) => (
+        <label key={line.id} className="block text-sm">
+          Use substitute for {line.ingredientName ?? line.rawName}
+          <select
+            aria-label={`Use substitute for ${line.ingredientName ?? line.rawName}`}
+            value={substitutes[line.id] ?? ""}
+            onChange={(event) => { setSubstitutes((current) => ({ ...current, [line.id]: event.target.value })); setPreview(null); }}
+            className="ml-2 rounded-md border border-foreground/20 bg-transparent px-2 py-1 text-sm"
+          >
+            <option value="">Use named Ingredient</option>
+            {line.substitutes.map((substitute) => <option key={substitute.id} value={substitute.ingredientId}>{substitute.ingredientName}</option>)}
+          </select>
+        </label>
+      ))}
+
+      {!preview ? <button type="button" onClick={showPreview} disabled={busy} className="rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50">{busy ? "Previewing…" : "Preview Cook"}</button> : (
+        <div className="space-y-3 rounded-md bg-foreground/5 p-3">
+          <p className="text-sm font-medium">Makes {preview.portionsProduced} Portions</p>
+          <ul className="space-y-1 text-sm">
+            {preview.lines.map((line) => <li key={line.recipeLineId}>
+              {line.ingredientName}: {line.issue === "hand_depleted" ? "adjust by hand" : `deplete ${line.willDeplete} ${line.stockUnit ?? ""}`}
+              {line.shortfall > 0 ? <span className="text-amber-700"> — Short by {line.shortfall} {line.stockUnit ?? ""}</span> : null}
+              {line.issue && line.issue !== "hand_depleted" ? <span className="text-amber-700"> — {line.issue.replaceAll("_", " ")}</span> : null}
+            </li>)}
+          </ul>
+          {discrepancies.length > 0 ? <p role="alert" className="text-sm text-amber-700">Pantry discrepancies above will be clamped at zero.</p> : <p className="text-sm text-green-700">Pantry amounts cover this Cook.</p>}
+          <div className="flex gap-2">
+            <button type="button" onClick={commit} disabled={busy} className="rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50">{busy ? "Cooking…" : "Cook anyway"}</button>
+            <button type="button" onClick={() => setPreview(null)} disabled={busy} className="rounded-md border border-foreground/20 px-3 py-2 text-sm">Change</button>
+          </div>
+        </div>
+      )}
+      {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
+    </section>
   );
 }
 
