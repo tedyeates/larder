@@ -7,7 +7,7 @@
 -- recipe_line_inconsistencies / recipe_status / recipe_cookability views —
 -- never which internal function ran.
 begin;
-select plan(36);
+select plan(45);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000000030', 'recipes@example.com')
@@ -326,6 +326,67 @@ select is(
   'Sushi is Cookable once every line is available or fulfilled by substitute'
 );
 
+-- --- Unmeasured Quantity against the Pantry --------------------------------
+
+-- A Hand-Depleted line states no quantity, but "no quantity" is not "always
+-- in the cupboard": with no soy sauce at all the line is still missing.
+insert into public.recipes (name, servings) values ('Soy Test', 2) returning id as soy_id \gset
+
+select (public.create_recipe_line(
+  :'soy_id'::uuid, '30000000-0000-0000-0000-000000000004', null, null, null, 'a splash', false
+)).id as soy_line \gset
+
+select is(
+  (select status from public.recipe_status where recipe_line_id = :'soy_line'),
+  'missing',
+  'a no-quantity Hand-Depleted line is missing while the Pantry holds none of that Ingredient'
+);
+
+select is(
+  (select is_cookable from public.recipe_cookability where recipe_id = :'soy_id'),
+  false,
+  'a Recipe whose only line is an unstocked Hand-Depleted Ingredient is not Cookable'
+);
+
+select public.set_hand_depleted_fraction('30000000-0000-0000-0000-000000000004', 0.5, 'cupboard', '2026-01-01');
+
+select is(
+  (select status from public.recipe_status where recipe_line_id = :'soy_line'),
+  'available',
+  'the same no-quantity line is available once the Pantry holds a fraction of a bottle'
+);
+
+select is(
+  (select is_cookable from public.recipe_cookability where recipe_id = :'soy_id'),
+  true,
+  'the Recipe becomes Cookable once its Hand-Depleted Ingredient is in the Pantry'
+);
+
+-- --- Resolution when the free text matches an Ingredient's own name --------
+
+-- An Alias may never shadow an Ingredient's own name, so resolution has to
+-- skip the Alias rather than fail — otherwise a line reading "Mirin" could
+-- never be resolved to anything at all.
+select (public.create_recipe_line(
+  :'soy_id'::uuid, null, 'Mirin', 10, 'ml', null, false
+)).id as name_clash_line \gset
+
+select (public.resolve_recipe_line(
+  :'name_clash_line'::uuid, '30000000-0000-0000-0000-000000000003', true
+)).ingredient_id as resolved_to \gset
+
+select is(
+  :'resolved_to'::uuid,
+  '30000000-0000-0000-0000-000000000003'::uuid,
+  'a line whose free text matches an existing Ingredient''s name still resolves'
+);
+
+select is(
+  (select count(*)::int from public.ingredient_aliases where lower(btrim(alias)) = 'mirin'),
+  0,
+  'no Alias is created when the free text is already an Ingredient''s own name'
+);
+
 -- --- reorder_recipe_lines: full-set atomic reorder --------------------------
 
 insert into public.recipes (name, servings) values ('Reorder Test', 2) returning id as reorder_id \gset
@@ -359,6 +420,26 @@ select is(
   (select count(*)::int from public.recipes),
   0,
   'anon role reading recipes sees zero rows regardless of table contents'
+);
+
+-- The derived views must be read with the caller's privileges too, or the
+-- anon key that ships in the JS bundle reads every Recipe through them.
+select is(
+  (select count(*)::int from public.recipe_status),
+  0,
+  'anon role reading recipe_status through the view sees zero rows'
+);
+
+select is(
+  (select count(*)::int from public.recipe_cookability),
+  0,
+  'anon role reading recipe_cookability through the view sees zero rows'
+);
+
+select is(
+  (select count(*)::int from public.recipe_line_inconsistencies),
+  0,
+  'anon role reading recipe_line_inconsistencies through the view sees zero rows'
 );
 
 select throws_ok(

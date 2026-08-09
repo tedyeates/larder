@@ -402,19 +402,48 @@ export async function listSubstitutes(
   client: SupabaseClient,
   recipeLineId: string
 ): Promise<RecipeLineSubstituteWithIngredient[]> {
+  const byLine = await listSubstitutesByLine(client, [recipeLineId]);
+  return byLine.get(recipeLineId) ?? [];
+}
+
+/**
+ * Every Substitute for a set of Recipe Lines in one read, grouped by line.
+ * The Recipe screen renders every line at once, so asking per line would
+ * cost a round trip per Ingredient on a phone connection.
+ */
+async function listSubstitutesByLine(
+  client: SupabaseClient,
+  recipeLineIds: string[]
+): Promise<Map<string, RecipeLineSubstituteWithIngredient[]>> {
+  const byLine = new Map<string, RecipeLineSubstituteWithIngredient[]>();
+
+  if (recipeLineIds.length === 0) {
+    return byLine;
+  }
+
   const { data, error } = await client
     .from("recipe_line_substitutes")
     .select("id, recipe_line_id, ingredient_id, created_at, ingredients(name)")
-    .eq("recipe_line_id", recipeLineId);
+    .in("recipe_line_id", recipeLineIds);
 
   if (error) {
     throw new Error(errorMessage(error, "Failed to load Substitutes"));
   }
 
-  return (data ?? []).map((row: Row) => ({
-    ...toRecipeLineSubstitute(row),
-    ingredientName: (row.ingredients as { name: string } | null)?.name ?? "",
-  }));
+  for (const row of (data ?? []) as Row[]) {
+    const substitute: RecipeLineSubstituteWithIngredient = {
+      ...toRecipeLineSubstitute(row),
+      ingredientName: (row.ingredients as { name: string } | null)?.name ?? "",
+    };
+    const existing = byLine.get(substitute.recipeLineId);
+    if (existing) {
+      existing.push(substitute);
+    } else {
+      byLine.set(substitute.recipeLineId, [substitute]);
+    }
+  }
+
+  return byLine;
 }
 
 /**
@@ -547,21 +576,24 @@ export async function getRecipeWithLines(
       }),
   ]);
 
-  const lines: RecipeLineWithDetails[] = await Promise.all(
-    lineRows.map(async (row) => {
-      const ingredient = row.ingredients as
-        | { name: string; stock_unit: string; is_hand_depleted: boolean }
-        | null;
-      const substitutes = await listSubstitutes(client, row.id as string);
-      return {
-        ...toRecipeLine(row),
-        ingredientName: ingredient?.name ?? null,
-        stockUnit: ingredient?.stock_unit ?? null,
-        isHandDepleted: ingredient?.is_hand_depleted ?? null,
-        substitutes,
-      };
-    })
+  const lines: RecipeLineWithDetails[] = [];
+  const substitutesByLine = await listSubstitutesByLine(
+    client,
+    lineRows.map((row) => row.id as string)
   );
+
+  for (const row of lineRows) {
+    const ingredient = row.ingredients as
+      | { name: string; stock_unit: string; is_hand_depleted: boolean }
+      | null;
+    lines.push({
+      ...toRecipeLine(row),
+      ingredientName: ingredient?.name ?? null,
+      stockUnit: ingredient?.stock_unit ?? null,
+      isHandDepleted: ingredient?.is_hand_depleted ?? null,
+      substitutes: substitutesByLine.get(row.id as string) ?? [],
+    });
+  }
 
   return {
     ...toRecipe(recipeRow),

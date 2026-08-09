@@ -40,6 +40,7 @@ function makeFakeClient(result: { data?: unknown; error?: { message: string } | 
   builder.update = vi.fn(() => builder);
   builder.delete = vi.fn(() => builder);
   builder.eq = vi.fn(() => builder);
+  builder.in = vi.fn(() => builder);
   builder.order = vi.fn(() => builder);
   builder.single = vi.fn(() => Promise.resolve(terminal));
   builder.maybeSingle = vi.fn(() => Promise.resolve(terminal));
@@ -367,6 +368,22 @@ describe("substitutes", () => {
         ingredientName: "Rice wine",
       },
     ]);
+  });
+
+  it("returns no Substitutes for a line that has none, without asking for other lines'", async () => {
+    const client = makeFakeClient({
+      data: [
+        {
+          id: "s1",
+          recipe_line_id: "l1",
+          ingredient_id: "i3",
+          created_at: "2026-01-01T00:00:00Z",
+          ingredients: { name: "Rice wine" },
+        },
+      ],
+    });
+
+    await expect(listSubstitutes(client, "l9")).resolves.toEqual([]);
   });
 
   it("adds a Substitute for one Recipe Line", async () => {

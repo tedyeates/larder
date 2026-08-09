@@ -60,10 +60,12 @@ vi.mock("@/lib/recipes/recipes", async () => {
 
 const listIngredients = vi.fn();
 const resolveIngredientName = vi.fn();
+const createIngredient = vi.fn();
 
 vi.mock("@/lib/ingredients/registry", () => ({
   listIngredients: (...args: unknown[]) => listIngredients(...args),
   resolveIngredientName: (...args: unknown[]) => resolveIngredientName(...args),
+  createIngredient: (...args: unknown[]) => createIngredient(...args),
 }));
 
 const mirin: Ingredient = {
@@ -164,6 +166,7 @@ describe("RecipeDetailPage", () => {
     ]);
     listIngredients.mockReset().mockResolvedValue([mirin, riceWine]);
     resolveIngredientName.mockReset().mockResolvedValue({ resolved: false, candidates: [] });
+    createIngredient.mockReset().mockResolvedValue({ ...mirin, id: "i-new", name: "Leak" });
     rateRecipe.mockReset().mockResolvedValue(stirFry);
     updateRecipe.mockReset().mockResolvedValue(stirFry);
     addTag.mockReset().mockResolvedValue(undefined);
@@ -357,5 +360,83 @@ describe("RecipeDetailPage", () => {
       screen.getByText(/Essential lines never offer a Substitute/)
     ).toBeInTheDocument();
     expect(screen.queryByLabelText("Add a Substitute")).not.toBeInTheDocument();
+  });
+
+  it("offers an Ingredient already known by that name so the same text is never asked about twice", async () => {
+    resolveIngredientName.mockResolvedValue({
+      resolved: true,
+      ingredientId: "i-mirin",
+      name: "Mirin",
+      matchKind: "alias",
+    });
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
+
+    fireEvent.click(await screen.findByRole("button", { name: /Mirin \(100%\)/ }));
+
+    await waitFor(() => expect(resolveLine).toHaveBeenCalledWith({}, "l2", "i-mirin", true));
+  });
+
+  it("creates a new Ingredient from the resolution flow and resolves the line to it", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Resolve" }));
+    await screen.findByLabelText("New Ingredient name");
+    fireEvent.click(screen.getByRole("button", { name: "Create Ingredient and use it" }));
+
+    await waitFor(() =>
+      expect(createIngredient).toHaveBeenCalledWith(
+        {},
+        { name: "Leak", stockUnit: "pieces", isHandDepleted: false }
+      )
+    );
+    await waitFor(() => expect(resolveLine).toHaveBeenCalledWith({}, "l2", "i-new", true));
+  });
+
+  it("sends no quantity rather than a zero amount when the Amount field is left blank", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.change(screen.getByLabelText("Ingredient"), { target: { value: "i-rice-wine" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add line" }));
+
+    await waitFor(() =>
+      expect(addLine).toHaveBeenCalledWith(
+        {},
+        expect.objectContaining({ ingredientId: "i-rice-wine", amount: null, unit: null })
+      )
+    );
+  });
+
+  it("refuses an amount with no unit without asking the database", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.change(screen.getByLabelText("Ingredient"), { target: { value: "i-rice-wine" } });
+    fireEvent.change(screen.getByLabelText("Amount"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add line" }));
+
+    expect(await screen.findByText(/State both an amount and a unit/)).toBeInTheDocument();
+    expect(addLine).not.toHaveBeenCalled();
+  });
+
+  it("requires a name as written when no Ingredient is chosen", async () => {
+    render(<RecipeDetailPage />);
+    await screen.findByRole("heading", { name: "Chicken Stir-fry" });
+    fireEvent.click(screen.getByRole("button", { name: "Edit" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Add line" }));
+
+    expect(
+      await screen.findByText(/Choose an Ingredient, or type the name as written/)
+    ).toBeInTheDocument();
+    expect(addLine).not.toHaveBeenCalled();
   });
 });

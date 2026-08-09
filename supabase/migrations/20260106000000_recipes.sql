@@ -479,7 +479,20 @@ begin
     perform public.convert_to_stock_unit(p_ingredient_id, v_line.amount, v_line.unit);
   end if;
 
-  if p_create_alias and v_line.raw_name is not null and btrim(v_line.raw_name) <> '' then
+  -- An Alias may never shadow an Ingredient's own name (#3 enforces that
+  -- with a trigger that raises), and resolving to an Ingredient named
+  -- exactly as the line reads is the ordinary case — including the
+  -- "create a new Ingredient for this name" flow. Skip the Alias then
+  -- rather than letting it abort the whole resolution: that name already
+  -- resolves on its own.
+  if p_create_alias
+     and v_line.raw_name is not null
+     and btrim(v_line.raw_name) <> ''
+     and not exists (
+       select 1 from public.ingredients
+       where lower(btrim(name)) = lower(btrim(v_line.raw_name))
+     )
+  then
     insert into public.ingredient_aliases (ingredient_id, alias)
     values (p_ingredient_id, btrim(v_line.raw_name))
     on conflict (lower(btrim(alias))) do nothing;
@@ -527,7 +540,11 @@ $$;
 comment on function public.recipe_line_has_conversion(uuid, numeric, text) is
   'True when p_unit converts to the Ingredient''s Stock Unit (itself or a Convertible Unit), false otherwise. A boolean-returning wrapper around convert_to_stock_unit for use inside the inconsistencies view, where a raised exception cannot be caught per-row.';
 
-create or replace view public.recipe_line_inconsistencies as
+-- `security_invoker` so the view is read with the caller's own privileges
+-- and every underlying table's RLS still applies — without it a view owned
+-- by a role that bypasses RLS hands anon-key callers every row.
+create or replace view public.recipe_line_inconsistencies
+with (security_invoker = on) as
 select
   l.id as recipe_line_id,
   l.recipe_id,
@@ -554,7 +571,8 @@ comment on view public.recipe_line_inconsistencies is
 -- An Inconsistent line (unresolved, unconvertible, unmeasured) is always
 -- missing: arithmetic that cannot run cannot be "available".
 -- ---------------------------------------------------------------------
-create or replace view public.recipe_line_pantry_status as
+create or replace view public.recipe_line_pantry_status
+with (security_invoker = on) as
 select
   l.id as recipe_line_id,
   l.recipe_id,
@@ -565,7 +583,12 @@ select
     when l.amount is not null and not public.recipe_line_has_conversion(l.ingredient_id, l.amount, l.unit)
       then false
     when l.amount is null and not coalesce(i.is_hand_depleted, false) then false
-    when i.is_hand_depleted then true
+    -- An Unmeasured Quantity ("splash of soy sauce") is covered as soon as
+    -- the Pantry holds any of it: a Hand-Depleted Lot is a positive
+    -- fraction of a container and zero deletes the Lot, so "has a Lot"
+    -- is the whole question. No stock at all is still missing — Cookable
+    -- means every line is covered by the Pantry.
+    when l.amount is null then coalesce(stock.total_quantity, 0) > 0
     when coalesce(public.convert_to_stock_unit(l.ingredient_id, l.amount, l.unit), 0)
          <= coalesce(stock.total_quantity, 0)
       then true
@@ -574,7 +597,6 @@ select
   exists (
     select 1
     from public.recipe_line_substitutes sub
-    join public.ingredients si on si.id = sub.ingredient_id
     left join (
       select ingredient_id, sum(total_quantity) as total_quantity
       from public.pantry_summary
@@ -582,10 +604,7 @@ select
     ) sub_stock on sub_stock.ingredient_id = sub.ingredient_id
     where sub.recipe_line_id = l.id
       and not l.is_essential
-      and (
-        si.is_hand_depleted
-        or coalesce(sub_stock.total_quantity, 0) > 0
-      )
+      and coalesce(sub_stock.total_quantity, 0) > 0
   ) as has_substitute_stock
 from public.recipe_lines l
 left join public.ingredients i on i.id = l.ingredient_id
@@ -596,9 +615,10 @@ left join (
 ) stock on stock.ingredient_id = l.ingredient_id;
 
 comment on view public.recipe_line_pantry_status is
-  'Per-Line building block for Cookable: has_direct_stock (the named Ingredient itself, Hand-Depleted always true, Inconsistent lines always false) and has_substitute_stock (any non-Essential line''s listed Substitute that is in stock, ignored entirely when is_essential). recipe_status below turns these two booleans into available/fulfilled_by_substitute/missing.';
+  'Per-Line building block for Cookable: has_direct_stock (the named Ingredient itself; an Unmeasured Quantity needs any Hand-Depleted stock at all, Inconsistent lines are always false) and has_substitute_stock (any non-Essential line''s listed Substitute that is in stock, ignored entirely when is_essential). recipe_status below turns these two booleans into available/fulfilled_by_substitute/missing.';
 
-create or replace view public.recipe_status as
+create or replace view public.recipe_status
+with (security_invoker = on) as
 select
   recipe_line_id,
   recipe_id,
@@ -614,7 +634,8 @@ from public.recipe_line_pantry_status;
 comment on view public.recipe_status is
   'One row per Recipe Line with its status against the Pantry: available, fulfilled_by_substitute, or missing. The Recipe reading view''s per-line badge; recipe_cookability aggregates this to one Cookable boolean per Recipe.';
 
-create or replace view public.recipe_cookability as
+create or replace view public.recipe_cookability
+with (security_invoker = on) as
 select
   r.id as recipe_id,
   r.name,

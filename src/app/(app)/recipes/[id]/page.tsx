@@ -20,7 +20,7 @@ import {
   updateLine,
   updateRecipe,
 } from "@/lib/recipes/recipes";
-import { listIngredients, resolveIngredientName } from "@/lib/ingredients/registry";
+import { createIngredient, listIngredients, resolveIngredientName } from "@/lib/ingredients/registry";
 import type { Ingredient, IngredientCandidate } from "@/lib/ingredients/types";
 import {
   INCONSISTENCY_REASON_LABELS,
@@ -620,6 +620,21 @@ function AddLineForm({
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const statedAmount = noQuantity ? "" : amount.trim();
+    const statedUnit = noQuantity ? "" : unit.trim();
+
+    // A line carries an amount and a unit together or neither — never a
+    // bare number, which would be an amount in no stated unit at all.
+    if ((statedAmount === "") !== (statedUnit === "")) {
+      setError("State both an amount and a unit, or tick “No quantity”.");
+      return;
+    }
+
+    if (ingredientId === "" && rawName.trim() === "") {
+      setError("Choose an Ingredient, or type the name as written.");
+      return;
+    }
+
     setBusy(true);
     setError(null);
     try {
@@ -627,10 +642,10 @@ function AddLineForm({
       await addLine(supabase, {
         recipeId,
         ingredientId: ingredientId === "" ? null : ingredientId,
-        rawName: ingredientId === "" ? rawName : null,
-        amount: noQuantity ? null : Number(amount),
-        unit: noQuantity ? null : unit,
-        note: note === "" ? null : note,
+        rawName: ingredientId === "" ? rawName.trim() : null,
+        amount: statedAmount === "" ? null : Number(statedAmount),
+        unit: statedUnit === "" ? null : statedUnit,
+        note: note.trim() === "" ? null : note.trim(),
         isEssential,
       });
       setIngredientId("");
@@ -903,6 +918,9 @@ function ResolveLineForm({
   const [state, setState] = useState<LoadState>("loading");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [newName, setNewName] = useState(line.rawName ?? "");
+  const [newStockUnit, setNewStockUnit] = useState(line.unit ?? "");
+  const [newIsHandDepleted, setNewIsHandDepleted] = useState(false);
 
   useEffect(() => {
     async function search() {
@@ -910,7 +928,21 @@ function ResolveLineForm({
       try {
         const supabase = createClient();
         const result = await resolveIngredientName(supabase, line.rawName ?? "");
-        setCandidates(result.resolved ? [] : result.candidates);
+        // An exact or Alias hit is the strongest candidate there is — offer
+        // it rather than falling through to "no close matches", which is
+        // how the same free text would get asked about twice.
+        setCandidates(
+          result.resolved
+            ? [
+                {
+                  ingredientId: result.ingredientId,
+                  name: result.name,
+                  matchKind: result.matchKind,
+                  score: 1,
+                },
+              ]
+            : result.candidates
+        );
         setState("loaded");
       } catch (searchError) {
         setError(searchError instanceof Error ? searchError.message : "Failed to search Ingredients");
@@ -935,11 +967,36 @@ function ResolveLineForm({
     }
   }
 
+  async function handleCreateAndResolve(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (newName.trim() === "" || newStockUnit.trim() === "") {
+      setError("A new Ingredient needs a name and a Stock Unit.");
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const supabase = createClient();
+      const created = await createIngredient(supabase, {
+        name: newName.trim(),
+        stockUnit: newStockUnit.trim(),
+        isHandDepleted: newIsHandDepleted,
+      });
+      await resolveLine(supabase, line.id, created.id, true);
+      onDone();
+      await onChanged();
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "Failed to create Ingredient");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="mt-2 rounded-md bg-foreground/5 p-3 text-sm">
       <p className="text-xs text-foreground/60">
-        Map &quot;{line.rawName}&quot; to an existing Ingredient — remembered as an Alias so it's never
-        asked again.
+        Map &quot;{line.rawName}&quot; to an existing Ingredient — remembered as an Alias so it&apos;s
+        never asked again — or create a new Ingredient for it.
       </p>
       {state === "loading" ? (
         <p className="mt-2 text-xs text-foreground/60">Searching…</p>
@@ -948,9 +1005,7 @@ function ResolveLineForm({
           {error}
         </p>
       ) : candidates.length === 0 ? (
-        <p className="mt-2 text-xs text-foreground/60">
-          No close matches. Create a new Ingredient from the Ingredients screen, then resolve here.
-        </p>
+        <p className="mt-2 text-xs text-foreground/60">No close matches.</p>
       ) : (
         <ul className="mt-2 space-y-1">
           {candidates.map((candidate) => (
@@ -967,6 +1022,44 @@ function ResolveLineForm({
           ))}
         </ul>
       )}
+
+      <form onSubmit={handleCreateAndResolve} className="mt-3 grid gap-2 border-t border-foreground/10 pt-3">
+        <Field label="New Ingredient name" htmlFor={`new-ingredient-name-${line.id}`}>
+          <input
+            id={`new-ingredient-name-${line.id}`}
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            className="w-full rounded-md border border-foreground/20 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-foreground/50"
+          />
+        </Field>
+        <Field label="Stock Unit" htmlFor={`new-ingredient-unit-${line.id}`}>
+          <input
+            id={`new-ingredient-unit-${line.id}`}
+            value={newStockUnit}
+            onChange={(event) => setNewStockUnit(event.target.value)}
+            placeholder="g, ml, pieces…"
+            className="w-full rounded-md border border-foreground/20 bg-transparent px-2 py-1.5 text-sm outline-none focus:border-foreground/50"
+          />
+        </Field>
+        <label className="flex items-center gap-1 text-xs">
+          <input
+            type="checkbox"
+            checked={newIsHandDepleted}
+            onChange={(event) => setNewIsHandDepleted(event.target.checked)}
+          />
+          Hand-Depleted (adjusted by eye, may carry no quantity)
+        </label>
+        <div>
+          <button
+            type="submit"
+            disabled={busy}
+            className="rounded-md border border-foreground/20 px-2 py-1 text-xs disabled:opacity-50"
+          >
+            Create Ingredient and use it
+          </button>
+        </div>
+      </form>
+
       {error && state !== "error" ? (
         <p role="alert" className="mt-1 text-xs text-red-600">
           {error}
