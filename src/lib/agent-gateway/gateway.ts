@@ -128,6 +128,10 @@ function timestamp(value: unknown): string {
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
+function dateOnly(value: unknown): string {
+  return value instanceof Date ? value.toISOString().slice(0, 10) : String(value);
+}
+
 function records(value: unknown): JsonObject[] {
   return Array.isArray(value) ? value.filter(asRecord) : [];
 }
@@ -250,7 +254,7 @@ async function readPantry(client: PoolClient): Promise<ToolResult> {
       isHandDepleted: Boolean(row.is_hand_depleted),
       storageLocation: String(row.storage_location),
       totalQuantity: Number(row.total_quantity),
-      oldestAcquiredOn: String(row.oldest_acquired_on),
+      oldestAcquiredOn: dateOnly(row.oldest_acquired_on),
       lotCount: Number(row.lot_count),
     })),
   };
@@ -268,7 +272,7 @@ async function readMealStock(client: PoolClient): Promise<ToolResult> {
       label: row.label === null ? null : String(row.label),
       displayName: String(row.display_name),
       totalPortions: Number(row.total_portions),
-      oldestCookedOn: String(row.oldest_cooked_on),
+      oldestCookedOn: dateOnly(row.oldest_cooked_on),
       batchCount: Number(row.batch_count),
     })),
   };
@@ -316,7 +320,7 @@ async function readCurrentMealSlots(client: PoolClient): Promise<ToolResult> {
   return {
     mealSlots: result.rows.map((row) => ({
       id: String(row.id),
-      slotDate: String(row.slot_date),
+      slotDate: dateOnly(row.slot_date),
       mealTime: String(row.meal_time),
       recipeId: row.recipe_id === null ? null : String(row.recipe_id),
       recipeName: row.recipe_name === null ? null : String(row.recipe_name),
