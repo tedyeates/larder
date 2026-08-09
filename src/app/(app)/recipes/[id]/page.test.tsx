@@ -131,6 +131,8 @@ const stirFry: RecipeWithLines = {
   prepMinutes: 10,
   cookMinutes: 15,
   source: "family recipe",
+  sourceKey: null,
+  status: "confirmed",
   steps: "Fry everything.",
   createdAt: "2026-01-01T00:00:00Z",
   tags: ["dairy", "quick"],

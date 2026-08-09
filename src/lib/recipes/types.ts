@@ -6,6 +6,8 @@
  * supabase/migrations/20260106000000_recipes.sql.
  */
 
+export type RecipeStatus = "draft" | "confirmed";
+
 export type Recipe = {
   id: string;
   name: string;
@@ -15,6 +17,8 @@ export type Recipe = {
   prepMinutes: number | null;
   cookMinutes: number | null;
   source: string | null;
+  sourceKey: string | null;
+  status: RecipeStatus;
   steps: string | null;
   createdAt: string;
 };
@@ -62,6 +66,7 @@ export type RecipeWithLines = Recipe & {
 export type InconsistencyReason =
   | "unresolved_ingredient"
   | "non_convertible_unit"
+  | "missing_unit"
   | "unmeasured_on_auto_depleted";
 
 /** One row from `recipe_line_inconsistencies`: a Line currently blocking exact arithmetic. */
@@ -70,6 +75,12 @@ export type RecipeInconsistency = {
   recipeId: string;
   reason: InconsistencyReason;
   lineLabel: string;
+};
+
+/** One cross-Recipe row in the phone-first Resolution Queue. */
+export type RecipeResolutionQueueItem = RecipeInconsistency & {
+  recipeName: string;
+  recipeStatus: RecipeStatus;
 };
 
 export type RecipeLineStatus = "available" | "fulfilled_by_substitute" | "missing";
@@ -94,6 +105,7 @@ export type RecipeCookability = {
 export const INCONSISTENCY_REASON_LABELS: Record<InconsistencyReason, string> = {
   unresolved_ingredient: "Ingredient not matched yet",
   non_convertible_unit: "Unit has no known conversion to the Stock Unit",
+  missing_unit: "Quantity needs a unit",
   unmeasured_on_auto_depleted: "No quantity given, but this Ingredient isn't Hand-Depleted",
 };
 

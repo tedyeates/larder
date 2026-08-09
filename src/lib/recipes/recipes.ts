@@ -49,6 +49,8 @@ function toRecipe(row: Row): Recipe {
         ? null
         : Number(row.cook_minutes),
     source: (row.source as string | null) ?? null,
+    sourceKey: (row.source_key as string | null) ?? null,
+    status: row.status as Recipe["status"],
     steps: (row.steps as string | null) ?? null,
     createdAt: row.created_at as string,
   };

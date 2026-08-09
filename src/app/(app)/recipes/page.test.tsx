@@ -34,6 +34,8 @@ const stirFry: Recipe = {
   prepMinutes: 10,
   cookMinutes: 15,
   source: "family recipe",
+  sourceKey: null,
+  status: "confirmed",
   steps: null,
   createdAt: "2026-01-01T00:00:00Z",
 };
@@ -47,6 +49,8 @@ const sushi: Recipe = {
   prepMinutes: null,
   cookMinutes: null,
   source: null,
+  sourceKey: null,
+  status: "confirmed",
   steps: null,
   createdAt: "2026-01-01T00:00:00Z",
 };

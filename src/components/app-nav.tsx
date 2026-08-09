@@ -4,8 +4,15 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { NAV_ITEMS } from "@/lib/nav-items";
 
-function isActive(pathname: string, href: string) {
-  return pathname === href || pathname.startsWith(`${href}/`);
+/**
+ * Only the most specific matching link is current. Nested hrefs such as
+ * /recipes/resolve otherwise light up their parent too, which would leave the
+ * nav claiming two current pages at once.
+ */
+function activeHref(pathname: string, hrefs: string[]) {
+  return hrefs
+    .filter((href) => pathname === href || pathname.startsWith(`${href}/`))
+    .reduce((longest, href) => (href.length > longest.length ? href : longest), "");
 }
 
 /**
@@ -15,6 +22,7 @@ function isActive(pathname: string, href: string) {
  */
 export function AppNav() {
   const pathname = usePathname();
+  const current = activeHref(pathname, NAV_ITEMS.map((item) => item.href));
 
   return (
     <nav
@@ -23,7 +31,7 @@ export function AppNav() {
     >
       <ul className="flex justify-around md:flex-col md:justify-start md:gap-1">
         {NAV_ITEMS.map((item) => {
-          const active = isActive(pathname, item.href);
+          const active = item.href === current;
           return (
             <li key={item.href} className="flex-1 md:flex-none">
               <Link
