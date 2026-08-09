@@ -289,7 +289,7 @@ async function readMealLog(client: PoolClient): Promise<ToolResult> {
   return {
     mealLogEntries: result.rows.map((row) => ({
       id: String(row.id),
-      occurredOn: String(row.occurred_on),
+      occurredOn: dateOnly(row.occurred_on),
       mealTime: row.meal_time === null ? null : String(row.meal_time),
       kind: String(row.kind),
       recipeId: row.recipe_id === null ? null : String(row.recipe_id),

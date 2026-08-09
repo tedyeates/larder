@@ -243,11 +243,18 @@ describe("POST /api/mcp", () => {
     expect(JSON.stringify(content)).not.toContain(portionBatchId);
   });
 
-  it("reads Meal Log entries", async () => {
+  it("reads Meal Log entries with date-only occurrence dates", async () => {
     const response = await callTool("larder_read_meal_log");
     expect(response.status).toBe(200);
     expect(structured(await rpc(response))).toMatchObject({
-      mealLogEntries: [expect.objectContaining({ id: mealLogId, kind: "eaten", recipeId })],
+      mealLogEntries: [
+        expect.objectContaining({
+          id: mealLogId,
+          kind: "eaten",
+          recipeId,
+          occurredOn: "2099-01-01",
+        }),
+      ],
     });
   });
 
