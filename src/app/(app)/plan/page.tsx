@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { listRecipes } from "@/lib/recipes/recipes";
 import type { Recipe } from "@/lib/recipes/types";
-import type { CookPreview } from "@/lib/meals";
+import type { CookPreview, CookSubstitutionChoice } from "@/lib/meals";
 import {
   ateOutMealPlanSlot,
   clearMealPlanSlot,
@@ -55,6 +55,15 @@ export default function PlanPage() {
   const [error, setError] = useState<string | null>(null);
   const [editor, setEditor] = useState<EditorTarget | null>(null);
   const [preview, setPreview] = useState<{ slotId: string; value: CookPreview } | null>(null);
+  const [substitutes, setSubstitutes] = useState<Record<string, string>>({});
+
+  function choicesFor(slotId: string, overrides?: Record<string, string>): CookSubstitutionChoice[] {
+    const merged = overrides ? { ...substitutes, ...overrides } : substitutes;
+    return Object.entries(merged)
+      .filter(([key]) => key.startsWith(`${slotId}:`))
+      .map(([key, substituteIngredientId]) => ({ recipeLineId: key.slice(slotId.length + 1), substituteIngredientId }))
+      .filter((choice) => choice.substituteIngredientId !== "");
+  }
 
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
   const days = useMemo(() => Array.from({ length: 7 }, (_, index) => isoDate(addDays(weekStart, index))), [weekStart]);
@@ -122,10 +131,16 @@ export default function PlanPage() {
                 onEdit={() => setEditor({ slotDate: date, mealTime, ...(slot ? { slot } : {}) })}
                 onClear={() => slot && run(() => clearMealPlanSlot(createClient(), slot.id))}
                 onTopUp={() => slot && run(() => topUpMealPlanSlot(createClient(), slot.id))}
-                onPreview={() => slot && run(async () => setPreview({ slotId: slot.id, value: await previewPlanCook(createClient(), slot.id, []) }))}
-                onCommit={() => slot && run(async () => { await commitPlanCook(createClient(), slot.id, []); setPreview(null); })}
+                onPreview={() => slot && run(async () => setPreview({ slotId: slot.id, value: await previewPlanCook(createClient(), slot.id, choicesFor(slot.id)) }))}
+                onCommit={() => slot && run(async () => { await commitPlanCook(createClient(), slot.id, choicesFor(slot.id)); setPreview(null); })}
                 onEat={() => slot && run(() => eatMealPlanSlot(createClient(), slot.id))}
                 onAteOut={() => slot && run(() => ateOutMealPlanSlot(createClient(), slot.id))}
+                onSubstituteChange={(recipeLineId, substituteIngredientId) => slot && run(async () => {
+                  const key = `${slot.id}:${recipeLineId}`;
+                  const overrides = { [key]: substituteIngredientId };
+                  setSubstitutes((current) => ({ ...current, ...overrides }));
+                  setPreview({ slotId: slot.id, value: await previewPlanCook(createClient(), slot.id, choicesFor(slot.id, overrides)) });
+                })}
               />;
             })}
           </div>
@@ -145,9 +160,10 @@ export default function PlanPage() {
   );
 }
 
-function SlotCell({ date, mealTime, slot, preview, onEdit, onClear, onTopUp, onPreview, onCommit, onEat, onAteOut }: {
+function SlotCell({ date, mealTime, slot, preview, onEdit, onClear, onTopUp, onPreview, onCommit, onEat, onAteOut, onSubstituteChange }: {
   date: string; mealTime: MealTime; slot?: MealPlanSlot; preview: CookPreview | null;
   onEdit: () => void; onClear: () => void; onTopUp: () => void; onPreview: () => void; onCommit: () => void; onEat: () => void; onAteOut: () => void;
+  onSubstituteChange: (recipeLineId: string, substituteIngredientId: string) => void;
 }) {
   const label = MEAL_TIME_LABELS[mealTime].toLowerCase();
   if (isPast(date)) return <div className="rounded border border-foreground/10 p-2 text-xs text-foreground/60"><strong>{MEAL_TIME_LABELS[mealTime]}</strong><p>{slot?.recipeName ?? slot?.label ?? "Empty"}</p><p>Past slot — read-only</p></div>;
@@ -167,7 +183,25 @@ function SlotCell({ date, mealTime, slot, preview, onEdit, onClear, onTopUp, onP
       {slot.recipeId ? <button type="button" aria-label={`Mark ${title} eaten`} onClick={onEat} className="rounded border border-foreground/20 px-2 py-1 text-xs">Eaten</button> : null}
       <button type="button" aria-label={`Mark ${title} ate out`} onClick={onAteOut} className="rounded border border-foreground/20 px-2 py-1 text-xs">Ate Out</button>
     </div>
-    {preview ? <div className="space-y-2 rounded bg-foreground/5 p-2"><p className="text-xs font-medium">Makes {preview.portionsProduced} Portions</p>{preview.lines.some((line) => line.shortfall > 0 || (line.issue !== null && line.issue !== "hand_depleted")) ? <p className="text-xs text-amber-700">Pantry discrepancies will be clamped at zero.</p> : null}<button type="button" onClick={onCommit} className="rounded bg-foreground px-2 py-1 text-xs text-background">Cook anyway</button></div> : null}
+    {preview ? <div className="space-y-2 rounded bg-foreground/5 p-2">
+      <p className="text-xs font-medium">Makes {preview.portionsProduced} Portions</p>
+      {preview.lines.filter((line) => line.substitutes.length > 0).map((line) => (
+        <label key={line.recipeLineId} className="block text-xs">
+          Use substitute for {line.ingredientName}
+          <select
+            aria-label={`Use substitute for ${line.ingredientName}`}
+            value={line.substituteIngredientId ?? ""}
+            onChange={(event) => onSubstituteChange(line.recipeLineId, event.target.value)}
+            className="ml-2 rounded border border-foreground/20 bg-transparent px-1 py-0.5 text-xs"
+          >
+            <option value="">Use named Ingredient</option>
+            {line.substitutes.map((substitute) => <option key={substitute.ingredientId} value={substitute.ingredientId}>{substitute.ingredientName}</option>)}
+          </select>
+        </label>
+      ))}
+      {preview.lines.some((line) => line.shortfall > 0 || (line.issue !== null && line.issue !== "hand_depleted")) ? <p className="text-xs text-amber-700">Pantry discrepancies will be clamped at zero.</p> : null}
+      <button type="button" onClick={onCommit} className="rounded bg-foreground px-2 py-1 text-xs text-background">Cook anyway</button>
+    </div> : null}
   </article>;
 }
 

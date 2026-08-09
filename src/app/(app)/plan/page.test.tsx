@@ -96,6 +96,31 @@ describe("PlanPage", () => {
     expect(screen.getAllByText("Past slot — read-only").length).toBeGreaterThan(0);
   });
 
+  it("previews and commits with the Substitute chosen from a slot, same as the Recipe page", async () => {
+    previewPlanCook.mockResolvedValue({
+      recipeId: "r1", recipeName: "Chicken bowl", multiplier: 2, portionsProduced: 4,
+      lines: [{
+        recipeLineId: "l2", ingredientId: null, ingredientName: "Rice wine", stockUnit: "ml",
+        requested: 0, availableQuantity: 0, willDeplete: 0, shortfall: 0, issue: null,
+        substituteIngredientId: null,
+        substitutes: [{ ingredientId: "sub-1", ingredientName: "Mirin", availableQuantity: 20 }],
+      }],
+    });
+    render(<PlanPage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Preview cook Chicken bowl" }));
+    await screen.findByText("Makes 4 Portions");
+
+    fireEvent.change(screen.getByLabelText("Use substitute for Rice wine"), { target: { value: "sub-1" } });
+    await waitFor(() =>
+      expect(previewPlanCook).toHaveBeenLastCalledWith({}, "s1", [{ recipeLineId: "l2", substituteIngredientId: "sub-1" }])
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Cook anyway" }));
+    await waitFor(() =>
+      expect(commitPlanCook).toHaveBeenCalledWith({}, "s1", [{ recipeLineId: "l2", substituteIngredientId: "sub-1" }])
+    );
+  });
+
   it("renders loading, error, and empty states", async () => {
     listMealPlanSlots.mockReset().mockReturnValue(new Promise(() => {}));
     listRecipes.mockReset().mockReturnValue(new Promise(() => {}));
