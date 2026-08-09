@@ -1,5 +1,5 @@
 begin;
-select plan(12);
+select plan(15);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000000080', 'shopping@example.com')
@@ -109,6 +109,13 @@ select is(
 );
 
 select is(
+  (select count(*)::int from public.shopping_list_by_shop
+    where ingredient_id = '80000000-0000-0000-0000-000000000001'),
+  0,
+  'a bought Item is gone from every Shop projection, not just the one bought in'
+);
+
+select is(
   (select quantity from public.stock_lots where ingredient_id = '80000000-0000-0000-0000-000000000001' and acquired_on = '2026-08-09'),
   250::numeric,
   'buying creates a Stock Lot immediately'
@@ -133,6 +140,12 @@ select public.dismiss_shopping_item(
 );
 
 select is(
+  (select count(*)::int from public.shopping_items where ingredient_id = '80000000-0000-0000-0000-000000000003'),
+  0,
+  'dismissing removes the line'
+);
+
+select is(
   (select count(*)::int from public.stock_lots where ingredient_id = '80000000-0000-0000-0000-000000000003'),
   0,
   'dismissing removes the line without stocking anything'
@@ -146,6 +159,14 @@ select throws_like(
   $$select public.add_shopping_item('80000000-0000-0000-0000-000000000001'::uuid, 1)$$,
   '%requires an authenticated caller%',
   'add_shopping_item rejects anon callers'
+);
+
+-- The projection is a security_invoker view, so an anon caller inherits the
+-- deny-all RLS of every table beneath it rather than the owner's bypass.
+select is(
+  (select count(*)::int from public.shopping_list_by_shop),
+  0,
+  'the per-Shop projection shows an anon caller nothing'
 );
 
 reset role;

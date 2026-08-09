@@ -169,7 +169,12 @@ describe("ShoppingPage", () => {
     await waitFor(() => expect(screen.getByText("Kitchen towels")).toBeInTheDocument());
 
     const item = screen.getByTestId("shopping-item-si2");
-    fireEvent.change(within(item).getByLabelText("Aisle for Kitchen towels"), { target: { value: "a1" } });
+    const aisleSelect = within(item).getByLabelText("Aisle for Kitchen towels");
+    // The Shop's Aisles load after the list itself, so the option to select
+    // only exists once that second read has landed.
+    await waitFor(() => expect(within(aisleSelect).getByText(/Fruit & Veg/)).toBeInTheDocument());
+
+    fireEvent.change(aisleSelect, { target: { value: "a1" } });
     fireEvent.click(within(item).getByRole("button", { name: "Assign aisle" }));
 
     await waitFor(() => {
