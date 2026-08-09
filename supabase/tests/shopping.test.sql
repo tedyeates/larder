@@ -1,5 +1,5 @@
 begin;
-select plan(15);
+select plan(18);
 
 insert into auth.users (id, email) values
   ('00000000-0000-0000-0000-000000000080', 'shopping@example.com')
@@ -149,6 +149,49 @@ select is(
   (select count(*)::int from public.stock_lots where ingredient_id = '80000000-0000-0000-0000-000000000003'),
   0,
   'dismissing removes the line without stocking anything'
+);
+
+-- --- Suggested Amount and Substitute purchases --------------------------------
+
+select is(
+  (select last_purchased_amount from public.ingredients where id = '80000000-0000-0000-0000-000000000001'),
+  50::numeric,
+  'buying records the purchased amount as the Ingredient Suggested Amount'
+);
+
+insert into public.ingredients (id, name, stock_unit, is_hand_depleted) values
+  ('80000000-0000-0000-0000-000000000004', 'Mirin', 'ml', false),
+  ('80000000-0000-0000-0000-000000000005', 'Rice wine', 'ml', false);
+insert into public.recipes (id, name, servings, max_multiplier) values
+  ('80000000-0000-0000-0000-000000000090', 'Chicken bowl', 2, 1);
+insert into public.recipe_lines (id, recipe_id, ingredient_id, amount, unit, position) values
+  ('80000000-0000-0000-0000-000000000091', '80000000-0000-0000-0000-000000000090', '80000000-0000-0000-0000-000000000004', 30, 'ml', 0);
+insert into public.recipe_line_substitutes (recipe_line_id, ingredient_id) values
+  ('80000000-0000-0000-0000-000000000091', '80000000-0000-0000-0000-000000000005');
+
+select public.add_shopping_item('80000000-0000-0000-0000-000000000004', 30);
+select public.buy_shopping_item(
+  (select id from public.shopping_items where ingredient_id = '80000000-0000-0000-0000-000000000004'),
+  100,
+  'cupboard',
+  '2026-08-09',
+  '80000000-0000-0000-0000-000000000005'
+);
+
+select is(
+  (select last_purchased_amount from public.ingredients where id = '80000000-0000-0000-0000-000000000005'),
+  100::numeric,
+  'buying a Substitute records its amount as that Ingredient Suggested Amount'
+);
+
+select results_eq(
+  $$
+    select ingredient_id, quantity
+    from public.stock_lots
+    where ingredient_id = '80000000-0000-0000-0000-000000000005'
+  $$,
+  $$values ('80000000-0000-0000-0000-000000000005'::uuid, 100::numeric)$$,
+  'buying a selected Substitute stocks it instead of the required Ingredient'
 );
 
 reset role;

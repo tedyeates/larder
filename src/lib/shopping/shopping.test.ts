@@ -23,83 +23,39 @@ function makeFakeClient(result: { data?: unknown; error?: { message: string } | 
 }
 
 describe("listShoppingList", () => {
-  it("groups the database Shop/Aisle projection into headed sections", async () => {
+  it("groups the Shop projection and maps Recipe-approved substitutes", async () => {
     const client = makeFakeClient({
       data: [
         {
-          shop_id: "s1",
-          shop_name: "Lidl",
-          shop_position: 0,
-          section_id: "a1",
-          section_name: "Fruit & Veg",
-          section_emoji: "🥬",
-          section_position: 0,
-          is_unsorted: false,
-          shopping_item_id: "si1",
-          ingredient_id: "i1",
-          ingredient_name: "Carrots",
-          stock_unit: "pieces",
-          required_amount: "4",
-          last_purchased_amount: null,
+          shop_id: "s1", shop_name: "Lidl", shop_position: 0,
+          section_id: "a1", section_name: "Fruit & Veg", section_emoji: "🥬", section_position: 0, is_unsorted: false,
+          shopping_item_id: "si1", ingredient_id: "i1", ingredient_name: "Mirin", stock_unit: "ml", required_amount: "30", last_purchased_amount: null,
+          substitutes: [{ ingredient_id: "i2", ingredient_name: "Rice wine", stock_unit: "ml", last_purchased_amount: "100" }],
         },
         {
-          shop_id: "s1",
-          shop_name: "Lidl",
-          shop_position: 0,
-          section_id: null,
-          section_name: "Unsorted",
-          section_emoji: null,
-          section_position: 2147483647,
-          is_unsorted: true,
-          shopping_item_id: "si2",
-          ingredient_id: "i2",
-          ingredient_name: "Kitchen towels",
-          stock_unit: "rolls",
-          required_amount: "2",
-          last_purchased_amount: "3",
+          shop_id: "s1", shop_name: "Lidl", shop_position: 0,
+          section_id: null, section_name: "Unsorted", section_emoji: null, section_position: 2147483647, is_unsorted: true,
+          shopping_item_id: "si2", ingredient_id: "i3", ingredient_name: "Kitchen towels", stock_unit: "rolls", required_amount: "2", last_purchased_amount: "3", substitutes: [],
         },
       ],
     });
 
     await expect(listShoppingList(client)).resolves.toEqual([
       {
-        id: "s1",
-        name: "Lidl",
-        position: 0,
+        id: "s1", name: "Lidl", position: 0,
         sections: [
           {
-            id: "a1",
-            name: "Fruit & Veg",
-            emoji: "🥬",
-            position: 0,
-            isUnsorted: false,
-            items: [
-              {
-                id: "si1",
-                ingredientId: "i1",
-                ingredientName: "Carrots",
-                stockUnit: "pieces",
-                requiredAmount: 4,
-                lastPurchasedAmount: null,
-              },
-            ],
+            id: "a1", name: "Fruit & Veg", emoji: "🥬", position: 0, isUnsorted: false,
+            items: [{
+              id: "si1", ingredientId: "i1", ingredientName: "Mirin", stockUnit: "ml", requiredAmount: 30, lastPurchasedAmount: null,
+              substitutes: [{ ingredientId: "i2", ingredientName: "Rice wine", stockUnit: "ml", lastPurchasedAmount: 100 }],
+            }],
           },
           {
-            id: "unsorted",
-            name: "Unsorted",
-            emoji: null,
-            position: 2147483647,
-            isUnsorted: true,
-            items: [
-              {
-                id: "si2",
-                ingredientId: "i2",
-                ingredientName: "Kitchen towels",
-                stockUnit: "rolls",
-                requiredAmount: 2,
-                lastPurchasedAmount: 3,
-              },
-            ],
+            id: "unsorted", name: "Unsorted", emoji: null, position: 2147483647, isUnsorted: true,
+            items: [{
+              id: "si2", ingredientId: "i3", ingredientName: "Kitchen towels", stockUnit: "rolls", requiredAmount: 2, lastPurchasedAmount: 3, substitutes: [],
+            }],
           },
         ],
       },
@@ -109,24 +65,11 @@ describe("listShoppingList", () => {
 
   it("keeps a Shop with no current lines as an empty tab", async () => {
     const client = makeFakeClient({
-      data: [
-        {
-          shop_id: "s2",
-          shop_name: "Corner Shop",
-          shop_position: 1,
-          section_id: null,
-          section_name: null,
-          section_emoji: null,
-          section_position: null,
-          is_unsorted: null,
-          shopping_item_id: null,
-          ingredient_id: null,
-          ingredient_name: null,
-          stock_unit: null,
-          required_amount: null,
-          last_purchased_amount: null,
-        },
-      ],
+      data: [{
+        shop_id: "s2", shop_name: "Corner Shop", shop_position: 1,
+        section_id: null, section_name: null, section_emoji: null, section_position: null, is_unsorted: null,
+        shopping_item_id: null, ingredient_id: null, ingredient_name: null, stock_unit: null, required_amount: null, last_purchased_amount: null, substitutes: null,
+      }],
     });
 
     await expect(listShoppingList(client)).resolves.toEqual([
@@ -144,18 +87,15 @@ describe("Shopping List transitions", () => {
     const client = makeFakeClient({});
     await addShoppingItem(client, "i1", 4);
     expect(client.rpc).toHaveBeenCalledWith("add_shopping_item", {
-      p_ingredient_id: "i1",
-      p_required_amount: 4,
+      p_ingredient_id: "i1", p_required_amount: 4,
     });
   });
 
-  it("buys through the atomic stock-and-remove RPC", async () => {
+  it("buys selected Ingredient through the atomic stock-and-remove RPC", async () => {
     const client = makeFakeClient({});
-    await buyShoppingItem(client, "si1", { purchasedAmount: 6, storageLocation: "cupboard" });
+    await buyShoppingItem(client, "si1", { purchasedAmount: 6, storageLocation: "cupboard", ingredientId: "i2" });
     expect(client.rpc).toHaveBeenCalledWith("buy_shopping_item", {
-      p_shopping_item_id: "si1",
-      p_purchased_amount: 6,
-      p_storage_location: "cupboard",
+      p_shopping_item_id: "si1", p_purchased_amount: 6, p_storage_location: "cupboard", p_ingredient_id: "i2",
     });
   });
 
@@ -166,8 +106,6 @@ describe("Shopping List transitions", () => {
   });
 
   it("surfaces transition failures", async () => {
-    await expect(addShoppingItem(makeFakeClient({ error: { message: "bad amount" } }), "i1", 0)).rejects.toThrow(
-      "bad amount"
-    );
+    await expect(addShoppingItem(makeFakeClient({ error: { message: "bad amount" } }), "i1", 0)).rejects.toThrow("bad amount");
   });
 });

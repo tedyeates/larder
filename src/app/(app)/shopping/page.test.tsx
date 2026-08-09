@@ -69,7 +69,15 @@ const shops: ShoppingShop[] = [
             ingredientName: "Chicken thighs",
             stockUnit: "pieces",
             requiredAmount: 4,
-            lastPurchasedAmount: null,
+            lastPurchasedAmount: 6,
+            substitutes: [
+              {
+                ingredientId: "i3",
+                ingredientName: "Chicken breast",
+                stockUnit: "pieces",
+                lastPurchasedAmount: 10,
+              },
+            ],
           },
         ],
       },
@@ -87,6 +95,7 @@ const shops: ShoppingShop[] = [
             stockUnit: "rolls",
             requiredAmount: 2,
             lastPurchasedAmount: null,
+            substitutes: [],
           },
         ],
       },
@@ -111,12 +120,18 @@ const shops: ShoppingShop[] = [
             stockUnit: "rolls",
             requiredAmount: 2,
             lastPurchasedAmount: null,
+            substitutes: [],
           },
         ],
       },
     ],
   },
 ];
+
+function swipe(element: Element, from: { x: number; y: number }, to: { x: number; y: number }) {
+  fireEvent(element, new MouseEvent("pointerdown", { bubbles: true, clientX: from.x, clientY: from.y }));
+  fireEvent(element, new MouseEvent("pointerup", { bubbles: true, clientX: to.x, clientY: to.y }));
+}
 
 describe("ShoppingPage", () => {
   beforeEach(() => {
@@ -131,13 +146,21 @@ describe("ShoppingPage", () => {
     addPlacement.mockReset().mockResolvedValue({});
   });
 
-  it("renders Shopping grouped into headed Aisle sections", async () => {
+  async function renderLoadedPage() {
     render(<ShoppingPage />);
+    await waitFor(() => expect(screen.getByText("Chicken thighs")).toBeInTheDocument());
+    return screen.getByTestId("shopping-item-si1");
+  }
+
+  it("renders Shopping grouped into headed Aisle sections with distinguishable Required and Suggested amounts", async () => {
+    await renderLoadedPage();
 
     expect(screen.getByRole("heading", { name: "Shopping" })).toBeInTheDocument();
-    await waitFor(() => expect(screen.getByRole("tab", { name: "Lidl" })).toBeInTheDocument());
+    expect(screen.getByRole("tab", { name: "Lidl" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "🥬 Fruit & Veg" })).toBeInTheDocument();
-    expect(screen.getByText("Chicken thighs")).toBeInTheDocument();
+    expect(screen.getByText("Required: 4 pieces")).toBeInTheDocument();
+    expect(screen.getByText("Suggested: 6 pieces")).toBeInTheDocument();
+    expect(screen.getByText("Suggested: 2 rolls")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Unsorted" })).toBeInTheDocument();
     expect(screen.getByText("Kitchen towels")).toBeInTheDocument();
   });
@@ -170,8 +193,6 @@ describe("ShoppingPage", () => {
 
     const item = screen.getByTestId("shopping-item-si2");
     const aisleSelect = within(item).getByLabelText("Aisle for Kitchen towels");
-    // The Shop's Aisles load after the list itself, so the option to select
-    // only exists once that second read has landed.
     await waitFor(() => expect(within(aisleSelect).getByText(/Fruit & Veg/)).toBeInTheDocument());
 
     fireEvent.change(aisleSelect, { target: { value: "a1" } });
@@ -182,25 +203,98 @@ describe("ShoppingPage", () => {
     });
   });
 
-  it("buys immediately into a Stock Lot and can dismiss without stocking", async () => {
-    render(<ShoppingPage />);
-    await waitFor(() => expect(screen.getByText("Chicken thighs")).toBeInTheDocument());
+  it("banks Suggested Amount on tap", async () => {
+    const chicken = await renderLoadedPage();
 
-    const chicken = screen.getByTestId("shopping-item-si1");
-    fireEvent.change(within(chicken).getByLabelText("Purchased amount for Chicken thighs"), {
-      target: { value: "6" },
-    });
-    fireEvent.click(within(chicken).getByRole("button", { name: "Buy Chicken thighs" }));
+    fireEvent.click(within(chicken).getByText("Chicken thighs"));
 
     await waitFor(() => {
       expect(buyShoppingItem).toHaveBeenCalledWith({}, "si1", {
         purchasedAmount: 6,
         storageLocation: "cupboard",
+        ingredientId: "i1",
       });
     });
+  });
 
-    fireEvent.click(within(screen.getByTestId("shopping-item-si2")).getByRole("button", { name: "Dismiss Kitchen towels" }));
-    await waitFor(() => expect(dismissShoppingItem).toHaveBeenCalledWith({}, "si2"));
+  it("banks Suggested Amount on swipe-right", async () => {
+    const chicken = await renderLoadedPage();
+
+    swipe(chicken, { x: 10, y: 20 }, { x: 100, y: 20 });
+
+    await waitFor(() => expect(buyShoppingItem).toHaveBeenCalledTimes(1));
+    expect(buyShoppingItem).toHaveBeenLastCalledWith({}, "si1", {
+      purchasedAmount: 6,
+      storageLocation: "cupboard",
+      ingredientId: "i1",
+    });
+  });
+
+  it("swipe-left reveals buy Required Amount action", async () => {
+    const chicken = await renderLoadedPage();
+
+    swipe(chicken, { x: 100, y: 20 }, { x: 10, y: 20 });
+    fireEvent.click(await within(chicken).findByRole("button", { name: "Buy required amount" }));
+
+    await waitFor(() => expect(buyShoppingItem).toHaveBeenCalledWith({}, "si1", {
+      purchasedAmount: 4,
+      storageLocation: "cupboard",
+      ingredientId: "i1",
+    }));
+  });
+
+  it("swipe-left reveals custom purchase action", async () => {
+    const chicken = await renderLoadedPage();
+
+    swipe(chicken, { x: 100, y: 20 }, { x: 10, y: 20 });
+    fireEvent.click(await within(chicken).findByRole("button", { name: "Buy custom amount" }));
+    fireEvent.change(within(chicken).getByLabelText("Custom amount for Chicken thighs"), { target: { value: "8" } });
+    fireEvent.click(within(chicken).getByRole("button", { name: "Confirm custom purchase" }));
+
+    await waitFor(() => expect(buyShoppingItem).toHaveBeenCalledWith({}, "si1", {
+      purchasedAmount: 8,
+      storageLocation: "cupboard",
+      ingredientId: "i1",
+    }));
+  });
+
+  it("swipe-left reveals delete without stocking action", async () => {
+    const chicken = await renderLoadedPage();
+
+    swipe(chicken, { x: 100, y: 20 }, { x: 10, y: 20 });
+    fireEvent.click(await within(chicken).findByRole("button", { name: "Delete without stocking" }));
+
+    await waitFor(() => expect(dismissShoppingItem).toHaveBeenCalledWith({}, "si1"));
+  });
+
+  it("cycles substitutes with both vertical swipe directions and stocks selection", async () => {
+    const chicken = await renderLoadedPage();
+
+    swipe(chicken, { x: 50, y: 100 }, { x: 50, y: 10 });
+    expect(within(chicken).getByText("Buying: Chicken breast")).toBeInTheDocument();
+    expect(within(chicken).getByText("Suggested: 10 pieces")).toBeInTheDocument();
+
+    swipe(chicken, { x: 50, y: 10 }, { x: 50, y: 100 });
+    expect(within(chicken).getByText("Buying: Chicken thighs")).toBeInTheDocument();
+
+    swipe(chicken, { x: 50, y: 100 }, { x: 50, y: 10 });
+    fireEvent.click(within(chicken).getByRole("button", { name: "Buy suggested amount" }));
+    await waitFor(() => expect(buyShoppingItem).toHaveBeenCalledWith({}, "si1", {
+      purchasedAmount: 10,
+      storageLocation: "cupboard",
+      ingredientId: "i3",
+    }));
+  });
+
+  it("keeps every gesture action reachable with desktop controls", async () => {
+    const chicken = await renderLoadedPage();
+
+    fireEvent.click(within(chicken).getByRole("button", { name: "Show shopping actions" }));
+    expect(within(chicken).getByRole("button", { name: "Buy required amount" })).toBeInTheDocument();
+    expect(within(chicken).getByRole("button", { name: "Buy custom amount" })).toBeInTheDocument();
+    expect(within(chicken).getByRole("button", { name: "Delete without stocking" })).toBeInTheDocument();
+    fireEvent.click(within(chicken).getByRole("button", { name: "Next substitute" }));
+    expect(within(chicken).getByText("Buying: Chicken breast")).toBeInTheDocument();
   });
 
   it("shows empty and error states", async () => {

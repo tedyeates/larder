@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent, type PointerEvent } from "react";
 import { createClient } from "@/lib/supabase/client";
 import { listIngredients } from "@/lib/ingredients/registry";
 import { addPlacement, listAisles } from "@/lib/shops/shops";
@@ -20,6 +20,7 @@ import {
 } from "@/lib/pantry/types";
 
 type LoadState = "loading" | "loaded" | "error";
+type PurchaseInput = { purchasedAmount: number; storageLocation: StorageLocation; ingredientId: string };
 
 /**
  * One persistent Shopping List viewed through one Shop at a time. A tab is
@@ -64,7 +65,7 @@ export default function ShoppingPage() {
     await refresh();
   }
 
-  async function handleBuy(itemId: string, input: { purchasedAmount: number; storageLocation: StorageLocation }) {
+  async function handleBuy(itemId: string, input: PurchaseInput) {
     await buyShoppingItem(createClient(), itemId, input);
     await refresh();
   }
@@ -226,7 +227,7 @@ function ShopList({
   onChanged,
 }: {
   shop: ShoppingShop;
-  onBuy: (itemId: string, input: { purchasedAmount: number; storageLocation: StorageLocation }) => Promise<void>;
+  onBuy: (itemId: string, input: PurchaseInput) => Promise<void>;
   onDismiss: (itemId: string) => Promise<void>;
   onChanged: () => Promise<void>;
 }) {
@@ -312,20 +313,43 @@ function ShoppingItemRow({
   unsorted: boolean;
   aisles: AisleWithPlacementCount[];
   onAssign: (ingredientId: string, aisleId: string) => Promise<void>;
-  onBuy: (itemId: string, input: { purchasedAmount: number; storageLocation: StorageLocation }) => Promise<void>;
+  onBuy: (itemId: string, input: PurchaseInput) => Promise<void>;
   onDismiss: (itemId: string) => Promise<void>;
 }) {
-  const [purchasedAmount, setPurchasedAmount] = useState(String(item.lastPurchasedAmount ?? item.requiredAmount));
+  const choices = [
+    {
+      ingredientId: item.ingredientId,
+      ingredientName: item.ingredientName,
+      stockUnit: item.stockUnit,
+      lastPurchasedAmount: item.lastPurchasedAmount,
+    },
+    ...item.substitutes,
+  ];
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const selected = choices[selectedIndex] ?? choices[0];
+  const suggestedAmount = selected.lastPurchasedAmount ?? item.requiredAmount;
   const [storageLocation, setStorageLocation] = useState<StorageLocation>("cupboard");
+  const [customAmount, setCustomAmount] = useState(String(suggestedAmount));
   const [aisleId, setAisleId] = useState("");
+  const [actionsOpen, setActionsOpen] = useState(false);
+  const [customOpen, setCustomOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ignoreTap, setIgnoreTap] = useState(false);
 
-  async function handleBuy() {
+  useEffect(() => {
+    setCustomAmount(String(suggestedAmount));
+  }, [selectedIndex, suggestedAmount]);
+
+  async function handleBuy(amount: number) {
     setBusy(true);
     setError(null);
     try {
-      await onBuy(item.id, { purchasedAmount: Number(purchasedAmount), storageLocation });
+      await onBuy(item.id, {
+        purchasedAmount: amount,
+        storageLocation,
+        ingredientId: selected.ingredientId,
+      });
     } catch (buyError) {
       setError(buyError instanceof Error ? buyError.message : "Failed to buy Shopping Item");
       setBusy(false);
@@ -355,13 +379,62 @@ function ShoppingItemRow({
     }
   }
 
+  function cycleSubstitute(offset: number) {
+    if (choices.length < 2) return;
+    setSelectedIndex((current) => (current + offset + choices.length) % choices.length);
+  }
+
+  function handlePointerDown(event: PointerEvent<HTMLLIElement>) {
+    event.currentTarget.dataset.gestureStart = `${event.clientX}:${event.clientY}`;
+  }
+
+  function handlePointerUp(event: PointerEvent<HTMLLIElement>) {
+    const start = event.currentTarget.dataset.gestureStart;
+    delete event.currentTarget.dataset.gestureStart;
+    if (!start) return;
+
+    const [startX, startY] = start.split(":").map(Number);
+    const xDistance = event.clientX - startX;
+    const yDistance = event.clientY - startY;
+    if (Math.max(Math.abs(xDistance), Math.abs(yDistance)) < 48) return;
+
+    setIgnoreTap(true);
+    if (Math.abs(xDistance) > Math.abs(yDistance)) {
+      if (xDistance > 0) void handleBuy(suggestedAmount);
+      else setActionsOpen(true);
+    } else {
+      cycleSubstitute(yDistance < 0 ? 1 : -1);
+    }
+  }
+
+  function handleTap() {
+    if (ignoreTap) {
+      setIgnoreTap(false);
+      return;
+    }
+    void handleBuy(suggestedAmount);
+  }
+
   return (
-    <li data-testid={`shopping-item-${item.id}`} className="space-y-2 py-4">
-      <div className="flex items-baseline justify-between gap-3">
-        <span className="font-medium">{item.ingredientName}</span>
-        <span className="shrink-0 text-sm text-foreground/60">
-          {item.requiredAmount} {item.stockUnit}
-        </span>
+    <li
+      data-testid={`shopping-item-${item.id}`}
+      className="space-y-2 py-4 touch-none"
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+    >
+      <div
+        onClick={handleTap}
+        className="cursor-pointer rounded-md p-2 transition-transform duration-150 ease-out active:scale-[0.98]"
+        aria-label={`Buy suggested amount of ${selected.ingredientName}`}
+      >
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="font-medium">{item.ingredientName}</span>
+          <span className="text-xs text-foreground/50">Buying: {selected.ingredientName}</span>
+        </div>
+        <div className="mt-2 flex gap-2 text-sm">
+          <span className="rounded bg-foreground/10 px-2 py-1">Required: {item.requiredAmount} {item.stockUnit}</span>
+          <span className="rounded bg-foreground px-2 py-1 font-medium text-background">Suggested: {suggestedAmount} {selected.stockUnit}</span>
+        </div>
       </div>
 
       {unsorted ? (
@@ -393,56 +466,86 @@ function ShoppingItemRow({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-[1fr_1fr] gap-2 sm:flex sm:items-end">
-        <div>
-          <label htmlFor={`buy-amount-${item.id}`} className="sr-only">
-            Purchased amount for {item.ingredientName}
-          </label>
-          <input
-            id={`buy-amount-${item.id}`}
-            type="number"
-            min="0"
-            step="any"
-            value={purchasedAmount}
-            onChange={(event) => setPurchasedAmount(event.target.value)}
-            className="w-full rounded-md border border-foreground/20 bg-transparent px-3 py-3 text-sm"
-          />
-        </div>
-        <div>
-          <label htmlFor={`buy-location-${item.id}`} className="sr-only">
-            Storage Location for {item.ingredientName}
-          </label>
-          <select
-            id={`buy-location-${item.id}`}
-            value={storageLocation}
-            onChange={(event) => setStorageLocation(event.target.value as StorageLocation)}
-            className="w-full rounded-md border border-foreground/20 bg-transparent px-3 py-3 text-sm"
-          >
-            {STORAGE_LOCATIONS.map((location) => (
-              <option key={location} value={location}>
-                {STORAGE_LOCATION_LABELS[location]}
-              </option>
-            ))}
-          </select>
-        </div>
+      <div className="flex flex-wrap gap-2 px-2">
         <button
           type="button"
-          onClick={handleBuy}
-          disabled={busy || Number(purchasedAmount) <= 0}
-          className="rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background disabled:opacity-50"
-          aria-label={`Buy ${item.ingredientName}`}
+          onClick={() => void handleBuy(suggestedAmount)}
+          disabled={busy}
+          aria-label="Buy suggested amount"
+          className="rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50"
         >
           Buy
         </button>
         <button
           type="button"
-          onClick={handleDismiss}
+          onClick={() => setActionsOpen((open) => !open)}
           disabled={busy}
-          className="rounded-md border border-foreground/20 px-4 py-3 text-sm text-red-600 disabled:opacity-50"
-          aria-label={`Dismiss ${item.ingredientName}`}
+          aria-label="Show shopping actions"
+          aria-expanded={actionsOpen}
+          className="rounded-md border border-foreground/20 px-3 py-2 text-sm disabled:opacity-50"
         >
-          Dismiss
+          Actions
         </button>
+        {choices.length > 1 ? (
+          <>
+            <button type="button" onClick={() => cycleSubstitute(-1)} aria-label="Previous substitute" className="rounded-md border border-foreground/20 px-3 py-2 text-sm">
+              Previous
+            </button>
+            <button type="button" onClick={() => cycleSubstitute(1)} aria-label="Next substitute" className="rounded-md border border-foreground/20 px-3 py-2 text-sm">
+              Next
+            </button>
+          </>
+        ) : null}
+      </div>
+
+      <div className={`grid overflow-hidden transition-all duration-200 ease-out ${actionsOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
+        <div className="min-h-0">
+          <div className="grid gap-2 rounded-md border border-foreground/15 p-3 sm:grid-cols-2">
+            <label className="text-sm text-foreground/70" htmlFor={`buy-location-${item.id}`}>
+              Store in
+              <select
+                id={`buy-location-${item.id}`}
+                value={storageLocation}
+                onChange={(event) => setStorageLocation(event.target.value as StorageLocation)}
+                className="mt-1 w-full rounded-md border border-foreground/20 bg-transparent px-3 py-2 text-sm"
+              >
+                {STORAGE_LOCATIONS.map((location) => (
+                  <option key={location} value={location}>
+                    {STORAGE_LOCATION_LABELS[location]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-wrap content-end gap-2">
+              <button type="button" onClick={() => void handleBuy(item.requiredAmount)} disabled={busy} aria-label="Buy required amount" className="rounded-md border border-foreground/20 px-3 py-2 text-sm disabled:opacity-50">
+                Buy required amount
+              </button>
+              <button type="button" onClick={() => setCustomOpen(true)} disabled={busy} aria-label="Buy custom amount" className="rounded-md border border-foreground/20 px-3 py-2 text-sm disabled:opacity-50">
+                Buy custom amount
+              </button>
+              <button type="button" onClick={() => void handleDismiss()} disabled={busy} aria-label="Delete without stocking" className="rounded-md border border-red-600/40 px-3 py-2 text-sm text-red-600 disabled:opacity-50">
+                Delete without stocking
+              </button>
+            </div>
+            {customOpen ? (
+              <div className="flex gap-2 sm:col-span-2">
+                <label className="sr-only" htmlFor={`custom-amount-${item.id}`}>Custom amount for {item.ingredientName}</label>
+                <input
+                  id={`custom-amount-${item.id}`}
+                  type="number"
+                  min="0"
+                  step="any"
+                  value={customAmount}
+                  onChange={(event) => setCustomAmount(event.target.value)}
+                  className="min-w-0 flex-1 rounded-md border border-foreground/20 bg-transparent px-3 py-2 text-sm"
+                />
+                <button type="button" onClick={() => void handleBuy(Number(customAmount))} disabled={busy || Number(customAmount) <= 0} aria-label="Confirm custom purchase" className="rounded-md bg-foreground px-3 py-2 text-sm font-medium text-background disabled:opacity-50">
+                  Buy custom
+                </button>
+              </div>
+            ) : null}
+          </div>
+        </div>
       </div>
 
       {error ? (

@@ -29,3 +29,4 @@ Format: `- ❌ [what wrong] → ✅ [fix] (brief reason)`
 - ❌ Assumed an unspecified design.md path was repository root → ✅ verify supplied design path exists before batching reads (missing file invalidates whole batch)
 - ❌ Requested LSP document symbols for SQL migrations → ✅ read SQL migrations with filesystem tools (SQL extension is unsupported by code-intelligence service)
 - ❌ Ran `psql`/`pg_prove` successfully in a review turn, then assumed `npx pnpm test <file>` / `npx vitest run <file>` would also work → ✅ npm-based runners stayed blocked ("Command not in allowed list") while `git`, `psql` and `pg_prove` kept working; check the runner ONCE, then verify TS via the `code` tool's `get_diagnostics` on each touched file plus its test files, and verify SQL via `pg_prove`
+- ❌ Appended pgTAP cases after `rollback` → ✅ move test setup/assertions before role reset and transaction teardown (tests need fixture transaction and authenticated session)

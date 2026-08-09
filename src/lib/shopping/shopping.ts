@@ -18,6 +18,7 @@ type ShoppingListRow = Row & {
   stock_unit: string | null;
   required_amount: number | string | null;
   last_purchased_amount: number | string | null;
+  substitutes: Row[] | null;
 };
 
 function errorMessage(error: { message: string } | null, fallback: string): string {
@@ -26,8 +27,8 @@ function errorMessage(error: { message: string } | null, fallback: string): stri
 
 /**
  * Reads the one Shopping List projected into Shop tabs and Aisle-headed
- * sections. Grouping here makes the phone screen a thin renderer while the
- * database view owns which Shops each Item appears in.
+ * sections. Each Item carries the Recipe-approved alternatives available to
+ * its gesture row; the database remains source of truth for their validity.
  */
 export async function listShoppingList(client: SupabaseClient): Promise<ShoppingShop[]> {
   const { data, error } = await client
@@ -84,6 +85,15 @@ export async function listShoppingList(client: SupabaseClient): Promise<Shopping
       requiredAmount: Number(row.required_amount),
       lastPurchasedAmount:
         row.last_purchased_amount === null ? null : Number(row.last_purchased_amount),
+      substitutes: (row.substitutes ?? []).map((substitute) => ({
+        ingredientId: substitute.ingredient_id as string,
+        ingredientName: substitute.ingredient_name as string,
+        stockUnit: substitute.stock_unit as string,
+        lastPurchasedAmount:
+          substitute.last_purchased_amount === null || substitute.last_purchased_amount === undefined
+            ? null
+            : Number(substitute.last_purchased_amount),
+      })),
     });
   }
 
@@ -107,8 +117,9 @@ export async function addShoppingItem(
 }
 
 /**
- * Buys a shared list line via the atomic database transition. It both stocks
- * immediately and deletes the line, so every Shop tab loses it together.
+ * Buys a shared list line via the atomic database transition. A selected
+ * Ingredient is either the line Ingredient or a Recipe-approved Substitute;
+ * the RPC verifies that invariant before it stocks and removes the line.
  */
 export async function buyShoppingItem(
   client: SupabaseClient,
@@ -119,6 +130,7 @@ export async function buyShoppingItem(
     p_shopping_item_id: shoppingItemId,
     p_purchased_amount: input.purchasedAmount,
     p_storage_location: input.storageLocation,
+    p_ingredient_id: input.ingredientId,
   });
 
   if (error) {

@@ -1,6 +1,14 @@
 import type { StorageLocation } from "@/lib/pantry/types";
 
-/** One visible Shopping List line, joined to its Ingredient. */
+/** An Ingredient approved as a substitute for at least one Recipe Line using this Shopping Item. */
+export type ShoppingSubstitute = {
+  ingredientId: string;
+  ingredientName: string;
+  stockUnit: string;
+  lastPurchasedAmount: number | null;
+};
+
+/** One visible Shopping List line, joined to its Ingredient and acceptable Recipe substitutes. */
 export type ShoppingItem = {
   id: string;
   ingredientId: string;
@@ -8,6 +16,7 @@ export type ShoppingItem = {
   stockUnit: string;
   requiredAmount: number;
   lastPurchasedAmount: number | null;
+  substitutes: ShoppingSubstitute[];
 };
 
 /** One headed Aisle section in a Shop tab. `Unsorted` has no emoji or physical Aisle id. */
@@ -31,4 +40,6 @@ export type ShoppingShop = {
 export type BuyShoppingItemInput = {
   purchasedAmount: number;
   storageLocation: StorageLocation;
+  /** Original Ingredient or a Recipe-approved Substitute chosen on the Shopping line. */
+  ingredientId: string;
 };
