@@ -4,7 +4,7 @@ project_id = "larder"
 
 [api]
 enabled = true
-port = 54321
+port = 54331
 schemas = ["public", "graphql_public"]
 extra_search_path = ["public", "extensions"]
 max_rows = 1000
@@ -13,7 +13,7 @@ max_rows = 1000
 enabled = false
 
 [db]
-port = 54322
+port = 54332
 shadow_port = 54320
 health_timeout = "2m"
 major_version = 17
