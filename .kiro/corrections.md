@@ -74,3 +74,5 @@ Format: `- ❌ [what wrong] → ✅ [fix] (brief reason)`
 - ❌ Targeted `pnpm test <planner files>` was rejected by sandbox allowlist → ✅ stop runner retries; use diagnostics/static inspection and report test execution blocked (valid direct pnpm invocation unavailable)
 - ❌ Omitted `mode` for one `fs_read` operation, invalidating an unrelated parallel inspection → ✅ include required fields on every batched operation (batch validation is all-or-nothing)
 - ❌ Included an incomplete no-op `fs_write` call in a parallel mutation batch, so all writes were skipped → ✅ send only fully specified mutations (batch validation is all-or-nothing)
+- ❌ Requested `fs_read` Line mode for a directory path → ✅ use Directory mode when listing route trees (file-read mode rejects directories)
+- ❌ Edited a helper before its paired assertion updates in one e2e spec → ✅ batch all known same-file test changes into one mutation before validation (avoids fragmented test edits)

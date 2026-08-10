@@ -229,12 +229,17 @@ async function submitProposal(request: APIRequestContext, fixture: Fixture): Pro
   return proposal.id;
 }
 
-async function requiredAmount(database: Client, ingredientId: string): Promise<number | null> {
-  const result = await database.query<{ required_amount: string }>(
-    "select required_amount from public.shopping_items where ingredient_id = $1",
+async function shoppingItemState(database: Client, ingredientId: string): Promise<{ count: number; requiredAmount: number | null }> {
+  const result = await database.query<{ count: number; required_amount: string | null }>(
+    `select count(*)::integer as count,
+            sum(required_amount)::text as required_amount
+     from public.shopping_items
+     where ingredient_id = $1`,
     [ingredientId]
   );
-  return result.rows[0] ? Number(result.rows[0].required_amount) : null;
+  const row = result.rows[0];
+  if (!row) throw new Error("Shopping Item aggregate did not return a row");
+  return { count: row.count, requiredAmount: row.required_amount === null ? null : Number(row.required_amount) };
 }
 
 async function stockQuantity(database: Client, ingredientId: string): Promise<number | null> {
@@ -270,7 +275,7 @@ test.describe("proposal to meal log cascade", () => {
       await expect(page.getByRole("heading", { name: "Plan Proposals" })).toBeVisible();
       await page.getByRole("button", { name: "Confirm plan" }).click();
       await expect(page.getByText("No Plan Proposals awaiting review.")).toBeVisible();
-      expect(await requiredAmount(database, fixture.ingredientId)).toBe(REQUIRED_AMOUNT);
+      expect(await shoppingItemState(database, fixture.ingredientId)).toEqual({ count: 1, requiredAmount: REQUIRED_AMOUNT });
 
       await page.goto("/plan");
       const plannedSlot = page.getByRole("article").filter({ hasText: fixture.recipeName });
@@ -279,7 +284,7 @@ test.describe("proposal to meal log cascade", () => {
       await editor.getByLabel("Cook multiplier").fill(String(EDITED_MULTIPLIER));
       await editor.getByRole("button", { name: "Save slot" }).click();
       await expect(editor).toHaveCount(0);
-      expect(await requiredAmount(database, fixture.ingredientId)).toBe(REQUIRED_AMOUNT);
+      expect(await shoppingItemState(database, fixture.ingredientId)).toEqual({ count: 1, requiredAmount: REQUIRED_AMOUNT });
 
       await page.goto("/shopping");
       await page.getByRole("tab", { name: fixture.otherShopName }).click();
