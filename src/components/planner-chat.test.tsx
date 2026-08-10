@@ -38,6 +38,16 @@ describe("PlannerChat", () => {
     });
   });
 
+  it("renders a final SSE token even when the stream closes without its delimiter", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(sse('event: token\ndata: {"text":"Complete reply"}\n')));
+    render(<PlannerChat />);
+
+    fireEvent.change(screen.getByLabelText("Message"), { target: { value: "Plan dinners" } });
+    fireEvent.click(screen.getByRole("button", { name: "Send" }));
+
+    expect(await screen.findByText("Complete reply")).toBeInTheDocument();
+  });
+
   it("shows Runner errors instead of crashing", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ error: "Planner is unavailable. Check the Agent Runner connection." }), { status: 502 })));
     render(<PlannerChat />);

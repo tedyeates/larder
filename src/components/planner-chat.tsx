@@ -94,7 +94,16 @@ export function PlannerChat() {
         for (const runnerEvent of parsed.events) await receive(runnerEvent, assistantId);
         if (done) break;
       }
-      if (buffer.trim()) await receive({ event: "token", data: buffer }, assistantId);
+      if (buffer.trim()) {
+        // SSE dispatches a final event when a stream closes, even without a
+        // trailing blank line. Mirror that behavior instead of rendering its framing.
+        const finalEvents = eventsFrom(`${buffer}\n`).events;
+        if (finalEvents.length > 0) {
+          for (const runnerEvent of finalEvents) await receive(runnerEvent, assistantId);
+        } else {
+          await receive({ event: "token", data: buffer }, assistantId);
+        }
+      }
     } catch (requestError) {
       setMessages((current) => current.filter((item) => item.id !== assistantId || item.text !== ""));
       setError(requestError instanceof Error ? requestError.message : "Planner request failed.");
