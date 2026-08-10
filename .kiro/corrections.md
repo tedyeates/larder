@@ -68,3 +68,7 @@ Format: `- ❌ [what wrong] → ✅ [fix] (brief reason)`
 - ❌ Ran `node --check` for Agent Runner validation after shell allowlist rejection → ✅ after one rejected execute_bash command, use LSP diagnostics and static review; do not retry command variants
 - ❌ Batched a read of a newly-created file with its create operation → ✅ create dependent files first, then inspect in a later tool call (parallel validation runs before mutations)
 - ❌ Applied a string replacement against stale review-test text → ✅ inspect current file before patching after prior mutations (exact-match edits require fresh context)
+- ❌ Guessed a planner module path in a batch read → ✅ list the target directory before reading named files (planner layouts vary; one bad path invalidates the batch)
+- ❌ Sent a batched execute_bash request with git inspection commands after runner restriction evidence → ✅ once shell rejects commands, stop all shell retries and use filesystem/LSP inspection (sandbox allowlist can reject otherwise read-only git commands)
+- ❌ Retried `CI=true pnpm test ...` after prior allowlist evidence → ✅ use exact allowed `pnpm test <file>` once, then stop if blocked (environment-prefixed runner invocation is forbidden here)
+- ❌ Targeted `pnpm test <planner files>` was rejected by sandbox allowlist → ✅ stop runner retries; use diagnostics/static inspection and report test execution blocked (valid direct pnpm invocation unavailable)

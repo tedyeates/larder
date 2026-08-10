@@ -63,6 +63,17 @@ describe("PlanProposalReviewPage", () => {
     });
   });
 
+  it("surfaces a clear error when the rejection is durable but the Runner cannot be notified", async () => {
+    notifyPlannerOfRejectedProposal.mockRejectedValue(new Error("Planner is unavailable. Check the Agent Runner connection."));
+    render(<PlanProposalReviewPage />);
+    await screen.findByText("Bean chili");
+    fireEvent.change(screen.getByLabelText("Rejection comments for proposal-1"), { target: { value: "Keep Thursday empty" } });
+    fireEvent.click(screen.getByRole("button", { name: "Reject with comments" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Plan Proposal was rejected, but could not reach Planner");
+    expect(rejectPlanProposal).toHaveBeenCalledWith({}, "proposal-1", "Keep Thursday empty");
+  });
+
   it("renders loading, error, and empty proposal states", async () => {
     listPlanProposals.mockReset().mockReturnValue(new Promise(() => {}));
     const loading = render(<PlanProposalReviewPage />);

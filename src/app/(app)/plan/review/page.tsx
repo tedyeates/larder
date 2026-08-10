@@ -63,7 +63,7 @@ export default function PlanProposalReviewPage() {
         <p className="mt-1 text-sm text-foreground/60">Review every AI-proposed Slot, Recipe, Ingredient and Alias before it changes your plan.</p>
       </div>
       {state === "loading" ? <p className="text-sm text-foreground/60">Loading Plan Proposals…</p> : null}
-      {state === "error" ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
+      {error ? <p role="alert" className="text-sm text-red-600">{error}</p> : null}
       {state === "loaded" && proposals.every((proposal) => proposal.status !== "review") ? <p className="text-sm text-foreground/60">No Plan Proposals awaiting review.</p> : null}
       {state === "loaded" ? <PlanProposalReview proposals={proposals} onConfirm={(id) => run(() => confirmPlanProposal(createClient(), id))} onReject={(id, comment) => run(() => rejectAndNotify(id, comment))} /> : null}
     </div>
