@@ -1,5 +1,6 @@
 node_modules/
 dist/
+.next/
 .env
 .env.local
 .env*.local
@@ -7,3 +8,4 @@ dist/
 .scratch/
 .DS_Store
 *.log
+.sandcastle/logs/

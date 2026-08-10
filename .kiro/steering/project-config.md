@@ -5,8 +5,8 @@ test_command: "pnpm test"
 type_check_command: "pnpm check"
 build_command: "pnpm build"
 setup_command: "pnpm install"
-host_setup_command: "npx supabase start"
-host_test_command: "npx supabase test db"
+host_setup_command: "pnpm dlx supabase start"
+host_test_command: "pnpm dlx supabase test db"
 concurrency: 3
 ---
 # Project Configuration
