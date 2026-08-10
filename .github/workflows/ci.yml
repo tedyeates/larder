@@ -95,7 +95,8 @@ jobs:
       - name: Run Playwright
         run: pnpm e2e
         env:
-          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54321
+          DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:54332/postgres
+          NEXT_PUBLIC_SUPABASE_URL: http://127.0.0.1:54331
           NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY_LOCAL }}
 
       - name: Upload Playwright report
