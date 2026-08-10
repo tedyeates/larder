@@ -427,10 +427,14 @@ interface CheckResult {
 async function runChecks(sandbox: {
   exec: (cmd: string, opts?: { cwd?: string; onLine?: (line: string) => void }) => Promise<{ stdout: string; stderr: string; exitCode: number }>;
 }): Promise<CheckResult> {
-  // Fastest-fail ordering: typecheck (cheapest gate) → testVite (no DB
-  // needed, so a failure here skips paying for an expensive DB reset) →
-  // resetDb (bail hard on non-zero — DB/e2e checks would run against stale
-  // schema otherwise) → testDb.
+  // Ordering: typecheck (cheapest gate) → resetDb (MUST run before any test
+  // that touches the DB — at least one Vitest suite, src/app/api/mcp/route.
+  // test.ts, opens a raw pg.Pool against $DATABASE_URL directly; it is not
+  // "DB-free" just because it runs under `pnpm test`) → testVite → testDb.
+  // Do NOT reorder resetDb after testVite again: that previously let Vitest
+  // run against a stale/unmigrated shared DB and produced misleading
+  // "relation does not exist" failures that looked like implementer/reviewer
+  // mistakes but were actually this ordering bug.
   const typeResult = await sandbox.exec(config.typeCheck, {
     cwd: "/home/agent/workspace",
     onLine: liveStream("check"),
@@ -439,20 +443,20 @@ async function runChecks(sandbox: {
     return { passed: false, output: `TYPE-CHECK FAILED:\n${typeResult.stdout}\n${typeResult.stderr}` };
   }
 
-  const viteResult = await sandbox.exec(config.testVite, {
-    cwd: "/home/agent/workspace",
-    onLine: liveStream("test:vite"),
-  });
-  if (viteResult.exitCode !== 0) {
-    return { passed: false, output: `VITEST FAILED:\n${viteResult.stdout}\n${viteResult.stderr}` };
-  }
-
   const resetResult = await sandbox.exec(config.resetDb, {
     cwd: "/home/agent/workspace",
     onLine: liveStream("db:reset"),
   });
   if (resetResult.exitCode !== 0) {
     return { passed: false, output: `DB RESET FAILED:\n${resetResult.stdout}\n${resetResult.stderr}` };
+  }
+
+  const viteResult = await sandbox.exec(config.testVite, {
+    cwd: "/home/agent/workspace",
+    onLine: liveStream("test:vite"),
+  });
+  if (viteResult.exitCode !== 0) {
+    return { passed: false, output: `VITEST FAILED:\n${viteResult.stdout}\n${viteResult.stderr}` };
   }
 
   const dbResult = await sandbox.exec(config.testDb, {
