@@ -42,15 +42,22 @@ Write access: verified
 Layout: single-context
 Glossary: CONTEXT.md
 ADRs: docs/adr/ (NNNN-title.md)
+Research: docs/research/
 
 ## Stack
 
-Next.js App Router + React + TypeScript on Vercel, Supabase Postgres for data and auth.
-Vitest for unit tests, pgTAP for the Postgres state transitions.
+Larder v2 (rewrite, branch `feature/remake-larder`). v1 is history on `feature/prd-1`; its code is
+not reused.
 
-State transitions live in Postgres functions called via Supabase RPC — the UI and the MCP share one
-implementation. `host_test_command` runs the pgTAP suite, which needs a local Supabase, so it runs
-on the host rather than inside a worktree.
+Next.js App Router + React + TypeScript, Supabase Postgres for data and auth, **shadcn/ui** for
+every component. Vitest for unit tests, pgTAP for the Postgres state transitions.
 
-Planning AI runs in a separate Agent Runner container, reached over a configurable URL. See
-`docs/adr/0002-ai-optional-agent-runner.md`.
+State transitions live in Postgres functions called via Supabase RPC, so both deploy targets share
+one implementation. `host_test_command` runs the pgTAP suite, which needs a local Supabase, so it
+runs on the host rather than inside a worktree.
+
+**Two deploy targets, one codebase:** Vercel serves the loop surfaces (Today, Shop, Pantry) with the
+planner disabled; a local desktop run sets `PLANNER_ENABLED=true` so the Plan page's route handler
+can spawn `kiro-cli`. The planner sits behind a single seam and may only write drafts.
+
+Map: #25.
