@@ -1,0 +1,35 @@
+{
+	"name": "larder",
+	"packageManager": "pnpm@11.13.1",
+	"private": true,
+	"version": "0.0.1",
+	"type": "module",
+	"scripts": {
+		"dev": "next dev",
+		"build": "next build",
+		"start": "next start",
+		"check": "tsc --noEmit",
+		"lint": "next lint",
+		"test": "vitest --run --passWithNoTests",
+		"test:watch": "vitest",
+		"db:types": "supabase gen types typescript --local > src/lib/database.types.ts",
+		"db:reset": "supabase db reset"
+	},
+	"dependencies": {
+		"next": "16.3.0",
+		"react": "19.2.8",
+		"react-dom": "19.2.8",
+		"@supabase/ssr": "0.12.4",
+		"@supabase/supabase-js": "2.112.2"
+	},
+	"devDependencies": {
+		"@ai-hero/sandcastle": "^0.12.0",
+		"@types/node": "^26.2.0",
+		"@types/react": "^19.2.18",
+		"@types/react-dom": "^19.2.4",
+		"dotenv": "^17.4.2",
+		"tsx": "^4.23.11",
+		"typescript": "^7.0.2",
+		"vitest": "^4.1.10"
+	}
+}
