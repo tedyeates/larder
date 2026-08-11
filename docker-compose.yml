@@ -7,7 +7,7 @@ services:
     environment:
       AGENT_RUNNER_URL: http://agent-runner:8080
     ports:
-      - "3000:3000"
+      - "3001:3000"
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -22,11 +22,7 @@ services:
       PORT: "8080"
       LARDER_URL: http://app:3000
       LARDER_AGENT_TOKEN: ${LARDER_AGENT_TOKEN:?set a minted Agent Token in .env}
-      # Pass credentials accepted by your configured Kiro model provider.
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
-      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
-      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID:-}
-      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY:-}
-      AWS_REGION: ${AWS_REGION:-}
+      # Headless kiro-cli auth — skips interactive browser login.
+      KIRO_API_KEY: ${KIRO_API_KEY:?set a Kiro API key in .env}
     ports:
       - "127.0.0.1:8080:8080"

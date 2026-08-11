@@ -37,7 +37,7 @@ data: {}
 ## Local setup
 
 1. Mint an **Agent Token** in Settings and put it in private `.env` as `LARDER_AGENT_TOKEN`.
-2. Set model-provider credentials accepted by kiro-cli (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`, or configured AWS credentials).
+2. Set `KIRO_API_KEY` in `.env` — this authenticates kiro-cli headlessly inside the Runner, skipping interactive browser login.
 3. Set app Supabase public variables in `.env`, then run `docker compose up --build`.
 
 Compose injects `AGENT_RUNNER_URL=http://agent-runner:8080` only into app. Runner receives `LARDER_URL=http://app:3000` and its Agent Token. It calls app MCP at `/api/mcp`; it has no database network configuration or credentials.

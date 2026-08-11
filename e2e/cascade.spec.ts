@@ -25,9 +25,6 @@ type McpResponse = {
   error?: { message?: string };
 };
 
-type InboxMessage = { id?: string; ID?: string };
-
-const INBOX_URL = process.env.E2E_INBOX_URL ?? "http://127.0.0.1:54324";
 const PURCHASED_AMOUNT = 250;
 const REQUIRED_AMOUNT = 100;
 const EDITED_MULTIPLIER = 2;
@@ -54,53 +51,44 @@ function tokenHash(secret: string): string {
   return createHash("sha256").update(secret, "utf8").digest("hex");
 }
 
-function messageId(message: InboxMessage): string | null {
-  const id = message.id ?? message.ID;
-  return typeof id === "string" && id !== "" ? id : null;
+const TEST_USER_PASSWORD = "cascade-e2e-password";
+
+async function createTestUser(database: Client, email: string): Promise<string> {
+  const userId = randomUUID();
+  await database.query(
+    `insert into auth.users (
+       instance_id, id, aud, role, email, encrypted_password,
+       email_confirmed_at, created_at, updated_at,
+       raw_app_meta_data, raw_user_meta_data,
+       confirmation_token, recovery_token, email_change_token_new, email_change
+     ) values (
+       '00000000-0000-0000-0000-000000000000', $1, 'authenticated', 'authenticated', $2,
+       extensions.crypt($3, extensions.gen_salt('bf')),
+       now(), now(), now(),
+       '{"provider":"email","providers":["email"]}', '{}',
+       '', '', '', ''
+     )`,
+    [userId, email, TEST_USER_PASSWORD]
+  );
+  await database.query(
+    `insert into auth.identities (
+       id, provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at
+     ) values ($1, $1::text, $1, jsonb_build_object('sub', $1::text, 'email', $2), 'email', now(), now(), now())`,
+    [userId, email]
+  );
+  return userId;
 }
 
-function magicLink(value: unknown): string | null {
-  const text = JSON.stringify(value).replace(/=\r?\n/g, "").replace(/=3D/g, "=");
-  const match = text.match(/https?:\/\/[^"'\\\s<>]*\/auth\/v1\/verify[^"'\\\s<>]*/)?.[0];
-  return match?.replaceAll("&amp;", "&") ?? null;
-}
-
-async function waitForMagicLink(request: APIRequestContext, email: string): Promise<string> {
-  const mailbox = email.split("@", 1)[0];
-  let found: string | null = null;
-
-  await expect.poll(async () => {
-    const summaries = await request.get(`${INBOX_URL}/api/v1/mailbox/${encodeURIComponent(mailbox)}`);
-    if (!summaries.ok()) return null;
-    const payload = (await summaries.json()) as InboxMessage[] | { messages?: InboxMessage[] };
-    const messages = Array.isArray(payload) ? payload : payload.messages ?? [];
-    const id = messages.map(messageId).find((value): value is string => value !== null);
-    if (!id) return null;
-
-    const detail = await request.get(`${INBOX_URL}/api/v1/message/${encodeURIComponent(id)}`);
-    if (!detail.ok()) return null;
-    found = magicLink(await detail.json());
-    return found;
-  }, { message: `magic link for ${email} did not arrive` }).toBeTruthy();
-
-  if (!found) throw new Error(`No magic link found for ${email}`);
-  return found;
-}
-
-async function signInWithMagicLink(page: Page, request: APIRequestContext, email: string) {
+async function signInWithPassword(page: Page, email: string, password: string) {
   await page.goto("/login");
   await page.getByLabel(/email address/i).fill(email);
-  await page.getByRole("button", { name: /send magic link/i }).click();
-  await expect(page.getByTestId("login-sent-message")).toBeVisible();
-
-  await page.goto(await waitForMagicLink(request, email));
-  await expect(page).toHaveURL(/\/plan$/);
+  await page.getByLabel(/password/i).fill(password);
+  await page.getByRole("button", { name: /sign in/i }).click();
+  await expect(page).toHaveURL(/\/$|\/plan$/);
 }
 
 async function seedFixture(database: Client, email: string, testInfo: TestInfo): Promise<Fixture> {
-  const userResult = await database.query<{ id: string }>("select id from auth.users where email = $1", [email]);
-  const userId = userResult.rows[0]?.id;
-  if (!userId) throw new Error(`Signed-in user ${email} was not created`);
+  const userId = await createTestUser(database, email);
 
   const suffix = randomUUID().slice(0, 8);
   const { mealTime, shopPosition } = fixtureDetails(testInfo);
@@ -261,7 +249,6 @@ async function portionsRemaining(database: Client, recipeId: string): Promise<nu
 test.describe("proposal to meal log cascade", () => {
   test("confirms, shops, cooks, eats, and never rewrites Shopping", async ({ page, request }, testInfo) => {
     const email = `cascade-${testInfo.project.name.replace(/[^a-z0-9]/gi, "-")}-${randomUUID()}@e2e.test`;
-    await signInWithMagicLink(page, request, email);
 
     const database = new Client({ connectionString: requiredEnvironment("DATABASE_URL") });
     await database.connect();
@@ -269,6 +256,7 @@ test.describe("proposal to meal log cascade", () => {
 
     try {
       fixture = await seedFixture(database, email, testInfo);
+      await signInWithPassword(page, email, TEST_USER_PASSWORD);
       const proposalId = await submitProposal(request, fixture);
 
       await page.goto("/plan/review");

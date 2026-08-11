@@ -11,7 +11,7 @@ import { NextResponse, type NextRequest } from "next/server";
  * below is intentionally the *only* place unauthenticated requests are
  * permitted through.
  */
-const PUBLIC_PATHS = ["/login", "/auth/callback"];
+const PUBLIC_PATHS = ["/login"];
 
 function isPublicPath(pathname: string) {
   return PUBLIC_PATHS.some(
