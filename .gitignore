@@ -1,4 +1,5 @@
 node_modules/
+.pnpm-store/
 dist/
 .env
 .env.local
@@ -7,3 +8,21 @@ dist/
 .scratch/
 .DS_Store
 *.log
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
+
+# testing
+/coverage
+/playwright-report/
+/test-results/
+/blob-report/
+
+# supabase CLI
+/supabase/.temp/
+
+# kiro local session state
+.kiro/settings/

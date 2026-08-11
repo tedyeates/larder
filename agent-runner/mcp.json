@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "larder": {
+      "type": "streamable-http",
+      "url": "${LARDER_URL}/api/mcp",
+      "headers": {
+        "Authorization": "Bearer ${LARDER_AGENT_TOKEN}"
+      }
+    }
+  }
+}

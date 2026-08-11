@@ -1,0 +1,11 @@
+node_modules
+.pnpm-store
+.next
+.git
+.env
+.env.*
+!.env.example
+.kiro
+coverage
+playwright-report
+test-results
