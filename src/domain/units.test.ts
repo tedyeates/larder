@@ -1,0 +1,123 @@
+import { describe, expect, it } from "vitest";
+import {
+  baseUnitFor,
+  ConversionError,
+  canConvert,
+  formatQuantity,
+  fromBase,
+  type IngredientUnits,
+  roundAmount,
+  toBase,
+} from "./units";
+
+const rice: IngredientUnits = { id: "rice", name: "Rice", stockUnit: "kg" };
+const flour: IngredientUnits = {
+  id: "flour",
+  name: "Flour",
+  stockUnit: "g",
+  gramsPer: { cup: 120, tbsp: 8 },
+};
+const onion: IngredientUnits = {
+  id: "onion",
+  name: "Onion",
+  stockUnit: "g",
+  gramsPer: { each: 150 },
+};
+const egg: IngredientUnits = {
+  id: "egg",
+  name: "Egg",
+  stockUnit: "each",
+  gramsPer: { each: 50 },
+};
+const garlic: IngredientUnits = { id: "garlic", name: "Garlic", stockUnit: "clove" };
+const milk: IngredientUnits = {
+  id: "milk",
+  name: "Milk",
+  stockUnit: "ml",
+  gramsPer: { ml: 1.03 },
+};
+
+describe("base units", () => {
+  it("normalises mass to grams, volume to millilitres, count to itself", () => {
+    expect(baseUnitFor("kg")).toBe("g");
+    expect(baseUnitFor("cup")).toBe("ml");
+    expect(baseUnitFor("clove")).toBe("clove");
+  });
+});
+
+describe("toBase", () => {
+  it("converts inside the mass family exactly", () => {
+    expect(toBase(1.5, "kg", rice)).toBe(1500);
+    expect(toBase(200, "g", rice)).toBe(200);
+  });
+
+  it("converts inside the volume family without hints", () => {
+    expect(toBase(2, "tbsp", milk)).toBe(30);
+    expect(toBase(0.5, "l", milk)).toBe(500);
+  });
+
+  it("keeps a count unit as its own base", () => {
+    expect(toBase(3, "clove", garlic)).toBe(3);
+  });
+
+  it("crosses count into mass using the per-piece hint", () => {
+    expect(toBase(2, "each", onion)).toBe(300);
+  });
+
+  it("crosses mass into count using the same hint in reverse", () => {
+    expect(toBase(300, "g", egg)).toBe(6);
+  });
+
+  it("crosses volume into mass using cup weight", () => {
+    expect(toBase(1, "cup", flour)).toBe(120);
+    expect(toBase(2, "tbsp", flour)).toBe(16);
+  });
+
+  it("crosses mass into volume using density", () => {
+    expect(roundAmount(toBase(103, "g", milk))).toBe(100);
+  });
+
+  it("throws rather than guess when there is no hint", () => {
+    const noHint: IngredientUnits = { id: "x", name: "Mystery", stockUnit: "g" };
+    expect(() => toBase(1, "cup", noHint)).toThrow(ConversionError);
+  });
+
+  it("refuses to convert between differently-named count units", () => {
+    const noHint: IngredientUnits = { id: "x", name: "Mystery", stockUnit: "clove" };
+    expect(() => toBase(1, "each", noHint)).toThrow(ConversionError);
+  });
+});
+
+describe("fromBase", () => {
+  it("round-trips a conversion", () => {
+    expect(fromBase(toBase(1.2, "kg", rice), "kg", rice)).toBeCloseTo(1.2, 6);
+    expect(fromBase(toBase(3, "tbsp", milk), "tbsp", milk)).toBeCloseTo(3, 6);
+  });
+
+  it("reports convertibility without throwing", () => {
+    expect(canConvert("cup", "g", flour)).toBe(true);
+    expect(canConvert("cup", "g", rice)).toBe(false);
+  });
+});
+
+describe("formatting", () => {
+  it("prefers kg and l at a thousand base units", () => {
+    expect(formatQuantity(1200, rice)).toBe("1.2 kg");
+    expect(formatQuantity(250, rice)).toBe("250 g");
+    expect(formatQuantity(1500, milk)).toBe("1.5 l");
+  });
+
+  it("pluralises counted things", () => {
+    expect(formatQuantity(1, egg)).toBe("1 each");
+    expect(formatQuantity(6, egg)).toBe("6 each");
+    const loaf: IngredientUnits = { id: "b", name: "Bread", stockUnit: "each" };
+    expect(formatQuantity(2, loaf)).toBe("2 each");
+  });
+});
+
+describe("roundAmount", () => {
+  it("removes floating point dust", () => {
+    expect(roundAmount(0.1 + 0.2)).toBe(0.3);
+    expect(roundAmount(-0)).toBe(0);
+  });
+});
