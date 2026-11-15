@@ -386,6 +386,10 @@ lines are surfaced for one-tap fixing. AI is the fallback for stubborn sites, no
 - One passphrase was the original plan; **Neon Auth (Managed Better Auth)** replaced it once the
   project had an auth-capable database. Email + password today; social OAuth and magic links are
   branch settings, not code changes.
+- **One account, sign-up closed.** The auth branch has `disable_sign_up` set, so the auth server
+  refuses new users — the sign-in form has no sign-up path, and the endpoint returns 400 regardless.
+  Adding a second person later is an admin action (`neon neon-auth user create`) or a deliberate
+  household invitation flow, never an open registration page.
 - `src/proxy.ts` redirects signed-out requests to `/auth/sign-in`; `/api/auth` and the auth views are
   public, everything else is protected. Proxy is a convenience, not the security boundary — route
   handlers and server actions re-check `auth.getSession()` before touching data.
