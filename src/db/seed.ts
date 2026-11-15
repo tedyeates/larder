@@ -1,5 +1,7 @@
 import { drizzle } from "drizzle-orm/node-postgres";
 import { Pool } from "pg";
+import { slugify } from "../lib/slug";
+import { verifiedConnectionString } from "./connection";
 import { ingredients, users } from "./schema";
 import { INGREDIENTS } from "./seed/ingredients";
 
@@ -8,20 +10,11 @@ import { INGREDIENTS } from "./seed/ingredients";
  * is a fresh database. Safe to re-run: ingredients are matched on (user, slug).
  */
 
-export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
 async function main(): Promise<void> {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
 
-  const pool = new Pool({ connectionString: url, max: 2 });
+  const pool = new Pool({ connectionString: verifiedConnectionString(url), max: 2 });
   const db = drizzle(pool);
 
   try {

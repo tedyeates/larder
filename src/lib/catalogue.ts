@@ -8,6 +8,7 @@ export interface IngredientOption {
   readonly name: string;
   readonly stockUnit: UnitCode;
   readonly category: string;
+  readonly aliases: readonly string[];
 }
 
 export async function listIngredientOptions(userId: string): Promise<IngredientOption[]> {
@@ -17,10 +18,15 @@ export async function listIngredientOptions(userId: string): Promise<IngredientO
       name: ingredients.name,
       stockUnit: ingredients.stockUnit,
       category: ingredients.category,
+      aliases: ingredients.aliases,
     })
     .from(ingredients)
     .where(eq(ingredients.userId, userId))
     .orderBy(asc(ingredients.name));
 
-  return rows.map((row) => ({ ...row, stockUnit: row.stockUnit as UnitCode }));
+  return rows.map((row) => ({
+    ...row,
+    stockUnit: row.stockUnit as UnitCode,
+    aliases: row.aliases ?? [],
+  }));
 }

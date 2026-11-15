@@ -6,7 +6,9 @@ import { auth } from "@/lib/auth/server";
  */
 export default auth.middleware({
   loginUrl: "/auth/sign-in",
-  publicRoutes: ["/", "/auth/sign-in"],
+  // /api/mcp authenticates with its own bearer token; the skill and agent
+  // instructions are public documents with no secrets in them.
+  publicRoutes: ["/", "/auth/sign-in", "/api/mcp", "/prompts", "/skills"],
 });
 
 export const config = {

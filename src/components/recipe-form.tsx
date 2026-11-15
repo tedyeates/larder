@@ -5,6 +5,7 @@ import { type FormEvent, useState, useTransition } from "react";
 import { createRecipe } from "@/actions/recipes";
 import { siblingUnits, type UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
+import { IngredientPicker } from "./ingredient-picker";
 
 interface Line {
   readonly key: number;
@@ -24,6 +25,7 @@ export function RecipeForm({ ingredients }: { ingredients: readonly IngredientOp
   const [error, setError] = useState<string | null>(null);
 
   const first = ingredients[0];
+  const [catalogue, setCatalogue] = useState<IngredientOption[]>([...ingredients]);
   const [lines, setLines] = useState<Line[]>([
     {
       key: 1,
@@ -113,28 +115,23 @@ export function RecipeForm({ ingredients }: { ingredients: readonly IngredientOp
       <section className="space-y-2">
         <h2 className="text-sm font-medium">Ingredients</h2>
         {lines.map((line) => {
-          const selected = ingredients.find((item) => item.id === line.ingredientId);
+          const selected = catalogue.find((item) => item.id === line.ingredientId);
           const units = selected ? siblingUnits(selected.stockUnit) : ["g"];
           return (
             <div key={line.key} className="grid gap-2 sm:grid-cols-[1fr_6rem_5rem_auto]">
-              <select
+              <IngredientPicker
+                options={catalogue}
                 value={line.ingredientId}
-                onChange={(event) => {
-                  const next = ingredients.find((item) => item.id === event.target.value);
+                onSelect={(option) => {
+                  setCatalogue((current) =>
+                    current.some((item) => item.id === option.id) ? current : [...current, option],
+                  );
                   updateLine(line.key, {
-                    ingredientId: event.target.value,
-                    unit: next ? (siblingUnits(next.stockUnit)[0] ?? "g") : "g",
+                    ingredientId: option.id,
+                    unit: siblingUnits(option.stockUnit)[0] ?? "g",
                   });
                 }}
-                aria-label="Ingredient"
-                className="rounded-lg border border-neutral-300 px-2 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-              >
-                {ingredients.map((item) => (
-                  <option key={item.id} value={item.id}>
-                    {item.name}
-                  </option>
-                ))}
-              </select>
+              />
 
               <input
                 type="number"

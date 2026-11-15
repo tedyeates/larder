@@ -328,6 +328,19 @@ A dismissible strip at the top of the plan, and a full list under Recipes → Le
 
 ## 7. AI seam (M2)
 
+**Status:** the read-only half is live. `/api/mcp` speaks stateless Streamable HTTP with JSON
+responses, authenticated by a single `LARDER_MCP_TOKEN` bearer token (rotate the env var to revoke).
+The served skill and setup prompt are public documents; the MCP endpoint authenticates itself and is
+listed as public in `src/proxy.ts`.
+
+Tools shipped: `list_pantry`, `expiring_soon`, `list_leftovers`, `get_week_plan`, `search_recipes`,
+`get_recipe`, `propose_shopping_list`. Write tools (`create_recipe`, `create_meal_plan`) stay
+human-only until the draft-plan review flow exists, so an agent cannot alter the ledger.
+
+The agent on-boarding mirrors Neon's pattern: `/agent-setup` renders copyable prompts (with the
+token), `/prompts/agent-setup.md` is a public machine-readable version, and
+`/skills/larder-planner/SKILL.md` is the planner brief an agent pulls and saves.
+
 ### MCP server
 
 `/api/mcp`, Streamable HTTP, bearer-token auth, one token per agent, revocable.

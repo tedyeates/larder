@@ -28,7 +28,15 @@ export default async function PantryPage() {
           <h1 className="text-2xl font-semibold tracking-tight">Pantry</h1>
           <p className="text-sm text-neutral-500">{session.user.email}</p>
         </div>
-        <SignOutButton />
+        <div className="flex items-center gap-4">
+          <a
+            href="/agent-setup"
+            className="text-sm text-neutral-500 underline-offset-4 hover:underline"
+          >
+            Connect an agent
+          </a>
+          <SignOutButton />
+        </div>
       </header>
 
       <PantryTable rows={rows} />

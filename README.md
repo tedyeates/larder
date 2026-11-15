@@ -49,6 +49,20 @@ corepack pnpm db:migrate  # needs DATABASE_URL_UNPOOLED
 corepack pnpm db:seed     # needs DATABASE_URL
 ```
 
+## Agents
+
+Larder exposes a **read-only** MCP server at `/api/mcp`, authenticated with a single bearer token
+(`LARDER_MCP_TOKEN`). It is stateless and returns JSON, so it survives serverless hosting.
+
+- Setup page (signed in): `/agent-setup` — a copyable prompt that installs the skill, wires the MCP
+  server and verifies the connection
+- Planner skill: `/skills/larder-planner/SKILL.md`
+- Machine-readable setup notes: `/prompts/agent-setup.md`
+
+Tools: `list_pantry`, `expiring_soon`, `list_leftovers`, `get_week_plan`, `search_recipes`,
+`get_recipe`, `propose_shopping_list`. Cooking, ticking shopping items and stock adjustments are
+human actions only.
+
 ## Rules the code enforces
 
 - Quantities live in an append-only ledger; balances are always a `SUM`.

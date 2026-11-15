@@ -6,6 +6,7 @@ import { addManualItem, removeShoppingItem, tickShoppingItem } from "@/actions/s
 import { siblingUnits, type UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
 import type { ShoppingRow } from "@/lib/shop";
+import { IngredientPicker } from "./ingredient-picker";
 
 export function ShoppingList({
   rows,
@@ -20,12 +21,13 @@ export function ShoppingList({
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
   const [ingredientId, setIngredientId] = useState(ingredients[0]?.id ?? "");
+  const [catalogue, setCatalogue] = useState<IngredientOption[]>([...ingredients]);
   const [quantity, setQuantity] = useState("");
   const [unit, setUnit] = useState<UnitCode>(
     ingredients[0] ? (siblingUnits(ingredients[0].stockUnit)[0] ?? "g") : "g",
   );
 
-  const selected = ingredients.find((item) => item.id === ingredientId);
+  const selected = catalogue.find((item) => item.id === ingredientId);
   const units = selected ? siblingUnits(selected.stockUnit) : ["g"];
 
   function tick(row: ShoppingRow) {
@@ -121,22 +123,17 @@ export function ShoppingList({
       <section className="rounded-xl border border-neutral-200 p-4 dark:border-neutral-800">
         <h2 className="mb-3 text-sm font-medium">Add an item</h2>
         <div className="grid gap-2 sm:grid-cols-[1fr_6rem_5rem_auto]">
-          <select
+          <IngredientPicker
+            options={catalogue}
             value={ingredientId}
-            onChange={(event) => {
-              setIngredientId(event.target.value);
-              const next = ingredients.find((item) => item.id === event.target.value);
-              if (next) setUnit(siblingUnits(next.stockUnit)[0] ?? "g");
+            onSelect={(option) => {
+              setCatalogue((current) =>
+                current.some((item) => item.id === option.id) ? current : [...current, option],
+              );
+              setIngredientId(option.id);
+              setUnit(siblingUnits(option.stockUnit)[0] ?? "g");
             }}
-            aria-label="Ingredient"
-            className="rounded-lg border border-neutral-300 px-2 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
-          >
-            {ingredients.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.name}
-              </option>
-            ))}
-          </select>
+          />
 
           <input
             type="number"
