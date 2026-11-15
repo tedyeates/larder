@@ -30,7 +30,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   other: "Other",
 };
 
-type Filter = "all" | "attention" | "use-soon";
+type Filter = "in-stock" | "attention" | "all";
 
 function chipClass(row: PantryRow): string {
   if (row.status === "Out") return "bg-red-50 text-red-700 dark:bg-red-950 dark:text-red-300";
@@ -43,13 +43,14 @@ function chipClass(row: PantryRow): string {
 
 function matchesFilter(row: PantryRow, filter: Filter): boolean {
   if (filter === "all") return true;
-  if (filter === "use-soon") return row.useSoon || row.expired;
-  return row.status === "Out" || row.status === "Low" || row.useSoon || row.expired;
+  // The pantry is stock, not catalogue: zero-quantity rows are opt-in.
+  if (filter === "in-stock") return row.onHand > 0;
+  return row.onHand <= 0 || row.status === "Low" || row.useSoon || row.expired;
 }
 
 export function PantryTable({ rows }: { rows: readonly PantryRow[] }) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
+  const [filter, setFilter] = useState<Filter>("in-stock");
   const [selected, setSelected] = useState<PantryRow | null>(null);
 
   const visible = useMemo(() => {
@@ -74,7 +75,10 @@ export function PantryTable({ rows }: { rows: readonly PantryRow[] }) {
     }));
   }, [visible]);
 
-  const attention = rows.filter((row) => row.status === "Out" || row.status === "Low").length;
+  const inStock = rows.filter((row) => row.onHand > 0).length;
+  const attention = rows.filter(
+    (row) => row.onHand <= 0 || row.status === "Low" || row.useSoon || row.expired,
+  ).length;
 
   return (
     <div className="space-y-5">
@@ -94,9 +98,9 @@ export function PantryTable({ rows }: { rows: readonly PantryRow[] }) {
         >
           {(
             [
-              ["all", "All"],
+              ["in-stock", "In stock"],
               ["attention", "Running out"],
-              ["use-soon", "Use soon"],
+              ["all", "All"],
             ] as const
           ).map(([value, label]) => (
             <button
@@ -118,13 +122,26 @@ export function PantryTable({ rows }: { rows: readonly PantryRow[] }) {
       </div>
 
       <p className="text-sm text-neutral-500">
-        {rows.length} ingredients · {attention} need attention · {visible.length} shown
+        {inStock} in stock · {attention} need attention · {visible.length} shown
       </p>
 
       {groups.length === 0 ? (
-        <p className="rounded-xl border border-dashed border-neutral-300 px-6 py-10 text-center text-sm text-neutral-500 dark:border-neutral-700">
-          Nothing matches. Clear the search or switch back to All.
-        </p>
+        <div className="rounded-xl border border-dashed border-neutral-300 px-6 py-10 text-center dark:border-neutral-700">
+          <p className="text-sm text-neutral-500">
+            {filter === "in-stock" && query.trim() === ""
+              ? "Nothing in the pantry yet."
+              : "Nothing matches. Clear the search or switch filters."}
+          </p>
+          {filter === "in-stock" && (
+            <button
+              type="button"
+              onClick={() => setFilter("all")}
+              className="mt-3 text-sm text-neutral-600 underline underline-offset-4 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+            >
+              Show all {rows.length} ingredients
+            </button>
+          )}
+        </div>
       ) : (
         <div className="space-y-6">
           {groups.map((group) => (

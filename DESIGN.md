@@ -239,6 +239,8 @@ The default landing screen. A dense, scannable table, not cards.
 | Eggs | 2 | — | Low |
 | Olive oil | 0 ml | — | Out |
 
+- **The default view is stock, not catalogue.** Ingredients at zero are hidden behind the `All` tab;
+  an empty pantry says so and offers one tap to reveal the catalogue and add something.
 - **Grouped by category**, collapsible; default sort by severity (Out → Low → Use soon → OK), then
   days to expiry, then name.
 - **Status is derived on read, never stored.** The flags are independent, and a row shows at most
@@ -254,7 +256,8 @@ The default landing screen. A dense, scannable table, not cards.
 - **Without an active plan, only `min_stock` can raise `Low`** — the plan-aware half needs a plan to
   compare against. This is why the minimum is optional rather than required: it's the fallback, not
   the primary signal.
-- **Filters:** category, status, and a text search that matches name and aliases.
+- **Filters:** `In stock` (default), `Running out` (zero, low, or turning), and `All`, plus a text
+  search that matches name and aliases.
 - **Row tap** opens the ingredient sheet: total, history entries newest-first (who, when, why),
   best-before queue, unit hints, `min_stock`, and the Add/Use up/Discard actions.
 - **"What am I running out of"** is the `Low` + `Out` filter, one tap from the table header.

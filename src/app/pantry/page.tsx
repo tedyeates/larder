@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { AppNav } from "@/components/app-nav";
 import { PantryTable } from "@/components/pantry-table";
 import { auth } from "@/lib/auth/server";
 import { getPantryRows } from "@/lib/pantry";
@@ -21,7 +22,7 @@ export default async function PantryPage() {
   const rows = await getPantryRows(appUser.id);
 
   return (
-    <main className="mx-auto max-w-3xl px-5 py-8 sm:px-6 sm:py-10">
+    <main className="mx-auto max-w-3xl px-5 pt-8 pb-28 sm:px-6 sm:pt-10">
       <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Pantry</h1>
@@ -31,6 +32,8 @@ export default async function PantryPage() {
       </header>
 
       <PantryTable rows={rows} />
+
+      <AppNav />
     </main>
   );
 }
