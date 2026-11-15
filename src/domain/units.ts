@@ -174,6 +174,14 @@ function trim(amount: number): string {
   return String(roundAmount(Number(amount.toFixed(2))));
 }
 
+/** The units a person would plausibly enter for this ingredient. */
+export function siblingUnits(stockUnit: UnitCode): UnitCode[] {
+  const family = unitFamily(baseUnitFor(stockUnit));
+  if (family === "mass") return ["g", "kg"];
+  if (family === "volume") return ["ml", "l"];
+  return [stockUnit];
+}
+
 /** Render an amount stored in base units the way a person would say it. */
 export function formatQuantity(amountInBase: number, ingredient: IngredientUnits): string {
   const base = baseUnitFor(ingredient.stockUnit);

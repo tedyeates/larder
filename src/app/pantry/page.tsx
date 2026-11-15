@@ -1,8 +1,7 @@
-import { sql } from "drizzle-orm";
 import { redirect } from "next/navigation";
-import { getDb } from "@/db";
-import { ingredients } from "@/db/schema";
+import { PantryTable } from "@/components/pantry-table";
 import { auth } from "@/lib/auth/server";
+import { getPantryRows } from "@/lib/pantry";
 import { getOrCreateAppUser } from "@/lib/users";
 import { SignOutButton } from "./sign-out-button";
 
@@ -19,15 +18,11 @@ export default async function PantryPage() {
     name: session.user.name,
   });
 
-  const db = getDb();
-  const [row] = await db
-    .select({ total: sql<number>`count(*)::int` })
-    .from(ingredients)
-    .where(sql`${ingredients.userId} = ${appUser.id}`);
+  const rows = await getPantryRows(appUser.id);
 
   return (
-    <main className="mx-auto max-w-3xl px-6 py-10">
-      <header className="flex items-start justify-between gap-4">
+    <main className="mx-auto max-w-3xl px-5 py-8 sm:px-6 sm:py-10">
+      <header className="mb-6 flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Pantry</h1>
           <p className="text-sm text-neutral-500">{session.user.email}</p>
@@ -35,13 +30,7 @@ export default async function PantryPage() {
         <SignOutButton />
       </header>
 
-      <section className="mt-10 rounded-xl border border-neutral-200 p-6 dark:border-neutral-800">
-        <p className="text-sm text-neutral-500">Catalogue loaded</p>
-        <p className="mt-1 text-3xl font-semibold tabular-nums">{row?.total ?? 0}</p>
-        <p className="mt-1 text-sm text-neutral-500">
-          ingredients seeded. The pantry table is the next screen to build.
-        </p>
-      </section>
+      <PantryTable rows={rows} />
     </main>
   );
 }
