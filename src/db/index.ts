@@ -1,13 +1,18 @@
-import { Pool } from "@neondatabase/serverless";
-import { drizzle } from "drizzle-orm/neon-serverless";
+import { attachDatabasePool } from "@vercel/functions";
+import { drizzle } from "drizzle-orm/node-postgres";
+import { Pool } from "pg";
 import * as schema from "./schema";
 
 /**
- * Neon's Pool driver over WebSocket, not the HTTP driver: multi-row ledger
- * writes need real interactive transactions.
+ * Postgres via node-postgres, as Neon recommends for Vercel: Fluid compute
+ * keeps instances warm, so a real pool is safe, and `attachDatabasePool` makes
+ * sure the connection is released before the function suspends.
  *
- * The pool is created lazily so importing this module never throws in a build
- * or a unit test that doesn't touch the database.
+ * The app always talks through the pooled `DATABASE_URL`. Migrations use
+ * `DATABASE_URL_UNPOOLED`, because PgBouncer's transaction mode can't carry DDL.
+ *
+ * Created lazily so importing this module never throws during a build or a unit
+ * test that doesn't touch the database.
  */
 
 let pool: Pool | undefined;
@@ -15,7 +20,12 @@ let pool: Pool | undefined;
 export function getPool(): Pool {
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL is not set");
-  pool ??= new Pool({ connectionString: url, max: 3 });
+
+  if (pool === undefined) {
+    pool = new Pool({ connectionString: url, max: 3 });
+    if (process.env.VERCEL === "1") attachDatabasePool(pool);
+  }
+
   return pool;
 }
 

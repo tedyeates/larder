@@ -1,7 +1,7 @@
 {
   "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
   "files": {
-    "includes": ["**", "!**/*.md", "!**/drizzle"]
+    "includes": ["**", "!**/*.md", "!**/node_modules", "!**/.next", "!**/drizzle"]
   },
   "formatter": {
     "enabled": true,
@@ -19,5 +19,8 @@
       "semicolons": "always",
       "trailingCommas": "all"
     }
+  },
+  "css": {
+    "parser": { "tailwindDirectives": true }
   }
 }

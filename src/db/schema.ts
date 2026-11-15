@@ -63,6 +63,9 @@ export const creator = pgEnum("creator", ["manual", "agent"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
+  /** id from the managed auth server; null until the account first signs in. */
+  authUserId: text("auth_user_id").unique(),
+  email: text("email"),
   name: text("name").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });

@@ -1,4 +1,8 @@
+import { config } from "dotenv";
 import { defineConfig } from "drizzle-kit";
+
+// Next loads .env.local for the app; drizzle-kit needs telling.
+config({ path: ".env.local", quiet: true });
 
 export default defineConfig({
   schema: "./src/db/schema.ts",
@@ -7,6 +11,10 @@ export default defineConfig({
   strict: true,
   verbose: true,
   dbCredentials: {
-    url: process.env.DATABASE_URL ?? "postgres://postgres:postgres@localhost:5432/larder",
+    // Migrations want the direct endpoint; transaction-mode pooling can break DDL.
+    url:
+      process.env.DATABASE_URL_UNPOOLED ??
+      process.env.DATABASE_URL ??
+      "postgres://postgres:postgres@localhost:5432/larder",
   },
 });

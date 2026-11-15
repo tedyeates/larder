@@ -1,2 +1,6 @@
 allowBuilds:
   esbuild: true
+
+# better-auth's packages want 1.3.3 while the tree resolved 1.3.2.
+overrides:
+  "@better-fetch/fetch": 1.3.3

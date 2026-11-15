@@ -35,7 +35,11 @@ OpenCode (desktop) ── MCP ──┘           └──> TickTick API (push 
 - **Tailwind 4 + shadcn/ui** (Radix primitives), mobile-first, bottom tab bar, 44px targets.
   **TanStack Table** for the pantry table; **lucide-react** icons; **sonner** toasts.
 - **Zod 4** at every boundary, including MCP tool inputs; **date-fns** for week and expiry maths.
-- **`jose`** for the signed session cookie; `node:crypto` scrypt for the passphrase — no auth library.
+- **Neon Auth (Managed Better Auth)** through `@neon/auth`: server proxy at `/api/auth`, browser client
+  to the same origin, `src/proxy.ts` protecting every route except the auth views. Users and sessions
+  live in the `neon_auth` schema on the same branch.
+- **`pg` + `attachDatabasePool`** rather than the serverless driver, because Vercel Fluid compute keeps
+  instances warm and the pool is released before the function suspends.
 - **`@modelcontextprotocol/sdk`** over Streamable HTTP, **stateless** (no session ID, JSON responses),
   because Vercel functions don't hold long-lived SSE connections.
 - **Vitest** on the conversion, deduction and leftover engine, with **PGlite** (0.5.16, real Postgres
@@ -379,12 +383,18 @@ lines are surfaced for one-tap fixing. AI is the fallback for stubborn sites, no
 
 ## 9. Auth and security
 
-- One passphrase in env, verified server-side, rate-limited (5/min per IP, lockout backoff).
-- Success → `jose`-signed JWT in an httpOnly, secure, sameSite=lax cookie, 90 days, rotated on use.
+- One passphrase was the original plan; **Neon Auth (Managed Better Auth)** replaced it once the
+  project had an auth-capable database. Email + password today; social OAuth and magic links are
+  branch settings, not code changes.
+- `src/proxy.ts` redirects signed-out requests to `/auth/sign-in`; `/api/auth` and the auth views are
+  public, everything else is protected. Proxy is a convenience, not the security boundary — route
+  handlers and server actions re-check `auth.getSession()` before touching data.
+- The app's `users` row links to the auth user via `auth_user_id`. The first sign-in adopts the
+  seeded single-user row, so the 119-ingredient catalogue belongs to whoever signs up first.
 - MCP tokens are separate, scoped, and revocable; they cannot create purchases, cook meals, or
   adjust stock.
 - All writes go through server actions / route handlers with Zod validation and `user_id` scoping.
-- No service-role database credentials in the browser, ever.
+- No database credentials in the browser, ever.
 - Audit log table for ledger writes: actor (`user` \| `mcp:<token name>`), action, before/after.
 
 ## 10. Non-goals
@@ -395,7 +405,7 @@ it can be added), AI inside the web app.
 
 ## 11. Milestones
 
-**M1 — The ledger and the phone loop (build this first).** Schema + seed catalogue, passphrase login,
+**M1 — The ledger and the phone loop (build this first).** Schema + seed catalogue, Neon Auth sign-in,
 pantry table with statuses and history, adjust sheet (add / use up / discard), manual recipe entry,
 cook mode with step checkmarks and timer, manual week plan with lunch and dinner, leftover portions
 and the tray, generate list from plan, tick → purchase, cook → FEFO deduction with shortfall
