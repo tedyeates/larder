@@ -138,3 +138,58 @@ export function weekDays(week: string): string[] {
     new Date(base + index * 86_400_000).toISOString().slice(0, 10),
   );
 }
+
+export interface PlannedCook {
+  readonly recipeId: string;
+  readonly title: string;
+  readonly day: string;
+  /** Portions this week intends to cook. */
+  readonly portions: number;
+  /** Portions already earmarked as planned leftovers. */
+  readonly reserved: number;
+}
+
+/**
+ * The cooks on this week's plan, and how much of each is already promised to a
+ * future leftover slot. This is what the "from a dish you'll cook" picker uses,
+ * so you cannot earmark more than the dish will produce.
+ */
+export function derivePlannedCooks(entries: readonly PlanEntryView[]): PlannedCook[] {
+  const cooks = new Map<
+    string,
+    { recipeId: string; title: string; day: string; portions: number }
+  >();
+
+  for (const entry of entries) {
+    if (entry.kind !== "recipe" || entry.status !== "planned" || entry.recipeId === null) continue;
+    const existing = cooks.get(entry.recipeId);
+    if (existing) {
+      cooks.set(entry.recipeId, { ...existing, portions: existing.portions + entry.portions });
+    } else {
+      cooks.set(entry.recipeId, {
+        recipeId: entry.recipeId,
+        title: entry.title,
+        day: entry.day,
+        portions: entry.portions,
+      });
+    }
+  }
+
+  const reserved = new Map<string, number>();
+  for (const entry of entries) {
+    if (
+      entry.kind !== "leftover" ||
+      entry.leftoverId !== null ||
+      entry.recipeId === null ||
+      entry.status !== "planned"
+    ) {
+      continue;
+    }
+    reserved.set(entry.recipeId, (reserved.get(entry.recipeId) ?? 0) + entry.portions);
+  }
+
+  return [...cooks.values()].map((cook) => ({
+    ...cook,
+    reserved: reserved.get(cook.recipeId) ?? 0,
+  }));
+}

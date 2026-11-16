@@ -4,7 +4,14 @@ import { AppNav } from "@/components/app-nav";
 import { WeekBoard } from "@/components/week-board";
 import { addDays } from "@/domain/dates";
 import { auth } from "@/lib/auth/server";
-import { currentWeek, listLeftovers, listRecipeOptions, loadWeek, weekDays } from "@/lib/plan";
+import {
+  currentWeek,
+  derivePlannedCooks,
+  listLeftovers,
+  listRecipeOptions,
+  loadWeek,
+  weekDays,
+} from "@/lib/plan";
 import { getOrCreateAppUser } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +44,7 @@ export default async function WeekPage({ params }: { params: Promise<{ week: str
   const days = weekDays(week);
   const first = days[0];
   const last = days[6];
+  const plannedCooks = derivePlannedCooks(view.entries);
 
   return (
     <main className="mx-auto max-w-3xl px-5 pt-8 pb-28 sm:px-6">
@@ -72,6 +80,7 @@ export default async function WeekPage({ params }: { params: Promise<{ week: str
         entries={view.entries}
         recipes={recipes}
         leftovers={leftovers}
+        plannedCooks={plannedCooks}
       />
 
       <AppNav />

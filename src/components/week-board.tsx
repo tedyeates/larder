@@ -12,7 +12,7 @@ import {
   removePlanEntry,
 } from "@/actions/plan";
 import { generateShoppingList } from "@/actions/shop";
-import type { LeftoverOption, PlanEntryView, RecipeOption, Slot } from "@/lib/plan";
+import type { LeftoverOption, PlanEntryView, PlannedCook, RecipeOption, Slot } from "@/lib/plan";
 
 const DAY_LABEL = new Intl.DateTimeFormat("en-GB", {
   weekday: "long",
@@ -32,6 +32,7 @@ export function WeekBoard({
   entries,
   recipes,
   leftovers,
+  plannedCooks,
 }: {
   week: string;
   days: readonly string[];
@@ -39,6 +40,7 @@ export function WeekBoard({
   entries: readonly PlanEntryView[];
   recipes: readonly RecipeOption[];
   leftovers: readonly LeftoverOption[];
+  plannedCooks: readonly PlannedCook[];
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -46,19 +48,41 @@ export function WeekBoard({
   const [adding, setAdding] = useState<{ day: string; slot: Slot } | null>(null);
   const [kind, setKind] = useState<"recipe" | "leftover">("recipe");
   const [recipeId, setRecipeId] = useState(recipes[0]?.id ?? "");
-  const [leftoverChoice, setLeftoverChoice] = useState(
-    leftovers[0] ? `batch:${leftovers[0].id}` : recipes[0] ? `planned:${recipes[0].id}` : "",
-  );
-  const [portions, setPortions] = useState("2");
+  const [leftoverChoice, setLeftoverChoice] = useState("");
+  const [portions, setPortions] = useState("1");
+
+  function availableFor(choice: string): number {
+    if (choice.startsWith("batch:")) {
+      const batch = leftovers.find((item) => `batch:${item.id}` === choice);
+      return batch?.portions ?? 0;
+    }
+    if (choice.startsWith("planned:")) {
+      const cook = plannedCooks.find((item) => `planned:${item.recipeId}` === choice);
+      return cook ? cook.portions - cook.reserved : 0;
+    }
+    return 0;
+  }
+
+  function defaultChoice(): string {
+    if (leftovers[0]) return `batch:${leftovers[0].id}`;
+    const cook = plannedCooks.find((item) => item.portions - item.reserved > 0);
+    return cook ? `planned:${cook.recipeId}` : "";
+  }
+
+  function chooseLeftover(choice: string) {
+    setLeftoverChoice(choice);
+    const available = availableFor(choice);
+    setPortions(available > 0 ? String(Math.min(1, available)) : "");
+  }
 
   function openAdd(day: string, slot: Slot) {
     setAdding({ day, slot });
     setKind(recipes.length > 0 ? "recipe" : "leftover");
     setRecipeId(recipes[0]?.id ?? "");
-    setLeftoverChoice(
-      leftovers[0] ? `batch:${leftovers[0].id}` : recipes[0] ? `planned:${recipes[0].id}` : "",
-    );
-    setPortions("2");
+    const choice = defaultChoice();
+    setLeftoverChoice(choice);
+    const available = availableFor(choice);
+    setPortions(available > 0 ? String(Math.min(1, available)) : "2");
     setMessage(null);
   }
 
@@ -220,16 +244,22 @@ export function WeekBoard({
                         </div>
 
                         <div className="flex flex-wrap gap-2">
-                          {entry.status === "planned" && (
-                            <button
-                              type="button"
-                              onClick={() => cook(entry)}
-                              disabled={pending}
-                              className="rounded-md bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
-                            >
-                              {entry.kind === "leftover" ? "Eat" : "Cook"}
-                            </button>
-                          )}
+                          {entry.status === "planned" &&
+                            entry.kind === "leftover" &&
+                            entry.leftoverId === null && (
+                              <span className="text-xs text-neutral-500">waiting for the cook</span>
+                            )}
+                          {entry.status === "planned" &&
+                            (entry.kind !== "leftover" || entry.leftoverId !== null) && (
+                              <button
+                                type="button"
+                                onClick={() => cook(entry)}
+                                disabled={pending}
+                                className="rounded-md bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+                              >
+                                {entry.kind === "leftover" ? "Eat" : "Cook"}
+                              </button>
+                            )}
                           {entry.status !== "planned" && (
                             <span className="text-xs text-neutral-500 capitalize">
                               {entry.status}
@@ -314,16 +344,18 @@ export function WeekBoard({
                   </select>
                 </label>
               )
-            ) : leftovers.length === 0 && recipes.length === 0 ? (
+            ) : leftovers.length === 0 &&
+              plannedCooks.every((cook) => cook.portions - cook.reserved <= 0) ? (
               <p className="text-sm text-neutral-500">
-                Nothing to draw on yet. Cook something, or add a recipe first.
+                Nothing to draw on yet. Add the meal first — its leftovers can be scheduled
+                afterwards.
               </p>
             ) : (
               <label className="block space-y-1 text-sm">
                 <span className="font-medium">Leftovers from</span>
                 <select
                   value={leftoverChoice}
-                  onChange={(event) => setLeftoverChoice(event.target.value)}
+                  onChange={(event) => chooseLeftover(event.target.value)}
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
                 >
                   {leftovers.length > 0 && (
@@ -335,18 +367,19 @@ export function WeekBoard({
                       ))}
                     </optgroup>
                   )}
-                  {recipes.length > 0 && (
-                    <optgroup label="From a dish you'll cook">
-                      {recipes.map((recipe) => (
-                        <option key={recipe.id} value={`planned:${recipe.id}`}>
-                          {recipe.title}
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
+                  {plannedCooks
+                    .filter((cook) => cook.portions - cook.reserved > 0)
+                    .map((cook) => (
+                      <option key={cook.recipeId} value={`planned:${cook.recipeId}`}>
+                        {cook.title} — {cook.portions - cook.reserved} of {cook.portions} free (
+                        {dayLabel(cook.day)})
+                      </option>
+                    ))}
                 </select>
                 <span className="block text-xs text-neutral-500">
-                  Planning ahead is fine — the pantry only changes when you actually cook.
+                  {availableFor(leftoverChoice) > 0
+                    ? `${availableFor(leftoverChoice)} portion(s) available here.`
+                    : "Cook the dish first, or pick another source."}
                 </span>
               </label>
             )}
@@ -357,6 +390,7 @@ export function WeekBoard({
                 type="number"
                 min="0.5"
                 step="0.5"
+                max={kind === "leftover" ? Math.max(availableFor(leftoverChoice), 0.5) : 24}
                 value={portions}
                 onChange={(event) => setPortions(event.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
@@ -366,7 +400,12 @@ export function WeekBoard({
             <button
               type="button"
               onClick={submitAdd}
-              disabled={pending || (kind === "recipe" ? recipeId === "" : leftoverChoice === "")}
+              disabled={
+                pending ||
+                (kind === "recipe"
+                  ? recipeId === ""
+                  : leftoverChoice === "" || availableFor(leftoverChoice) <= 0)
+              }
               className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
             >
               {pending ? "Adding…" : "Add to plan"}

@@ -1,6 +1,6 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
@@ -69,20 +69,18 @@ export async function cookEntry(input: unknown): Promise<CookResult> {
   const today = todayIso();
 
   // A leftover is a meal with no deduction: the ingredients left the pantry
-  // when it was cooked.
+  // when it was cooked. A planned leftover with no batch yet cannot be eaten —
+  // that is how five portions got scheduled out of a two-portion dinner.
   if (entry.kind === "leftover") {
-    await db.transaction(async (tx) => {
-      await tx
-        .update(mealPlanEntries)
-        .set({ status: "eaten" })
-        .where(eq(mealPlanEntries.id, entry.id));
-      if (entry.leftoverId) {
-        await tx
-          .update(leftovers)
-          .set({ status: "eaten" })
-          .where(eq(leftovers.id, entry.leftoverId));
-      }
-    });
+    if (!entry.leftoverId) {
+      return { error: "That dish hasn't been cooked yet, so there are no leftovers to eat." };
+    }
+
+    await db
+      .update(mealPlanEntries)
+      .set({ status: "eaten" })
+      .where(eq(mealPlanEntries.id, entry.id));
+
     revalidatePath(`/plan/${entry.week}`);
     revalidatePath("/plan");
     return { message: "Eaten. Nothing came out of the pantry." };
@@ -198,17 +196,67 @@ export async function cookEntry(input: unknown): Promise<CookResult> {
       .set({ status: "cooked", cookEventId: event.id })
       .where(eq(mealPlanEntries.id, entry.id));
 
-    if (split.leftoverPortions > 0) {
-      await tx.insert(leftovers).values({
-        userId: user.id,
-        cookEventId: event.id,
-        recipeId: recipe.id,
-        label: recipe.title,
-        portions: split.leftoverPortions,
-        storedAt: today,
-        bestBefore: addDays(today, 3),
-        status: "available",
-      });
+    const reservations = await tx
+      .select({ id: mealPlanEntries.id, portions: mealPlanEntries.portions })
+      .from(mealPlanEntries)
+      .where(
+        and(
+          eq(mealPlanEntries.planId, entry.planId),
+          eq(mealPlanEntries.kind, "leftover"),
+          eq(mealPlanEntries.recipeId, recipe.id),
+          isNull(mealPlanEntries.leftoverId),
+          eq(mealPlanEntries.status, "planned"),
+        ),
+      );
+
+    let available = split.leftoverPortions;
+
+    if (available > 0) {
+      const [batch] = await tx
+        .insert(leftovers)
+        .values({
+          userId: user.id,
+          cookEventId: event.id,
+          recipeId: recipe.id,
+          label: recipe.title,
+          portions: available,
+          storedAt: today,
+          bestBefore: addDays(today, 3),
+          status: "available",
+        })
+        .returning({ id: leftovers.id });
+
+      if (batch) {
+        // Attach the residuals that were planned before the cook, taking their
+        // portions out of the batch so availability and reservations add up.
+        for (const reservation of reservations) {
+          const take = Math.min(available, reservation.portions);
+          if (take <= 0) {
+            await tx
+              .update(mealPlanEntries)
+              .set({ status: "skipped" })
+              .where(eq(mealPlanEntries.id, reservation.id));
+            continue;
+          }
+          await tx
+            .update(mealPlanEntries)
+            .set({ leftoverId: batch.id, portions: take })
+            .where(eq(mealPlanEntries.id, reservation.id));
+          available -= take;
+        }
+
+        await tx
+          .update(leftovers)
+          .set({ portions: available, status: available <= 0 ? "reserved" : "available" })
+          .where(eq(leftovers.id, batch.id));
+      }
+    } else {
+      for (const reservation of reservations) {
+        await tx
+          .update(mealPlanEntries)
+          .set({ status: "skipped" })
+          .where(eq(mealPlanEntries.id, reservation.id));
+      }
     }
   });
 

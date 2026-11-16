@@ -1,10 +1,11 @@
 "use server";
 
-import { and, eq } from "drizzle-orm";
+import { and, eq, isNull } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { leftovers, mealPlanEntries, mealPlans, recipes } from "@/db/schema";
+import { daysBetween } from "@/domain/dates";
 import { auth } from "@/lib/auth/server";
 import { ensurePlan } from "@/lib/plan";
 import { getOrCreateAppUser } from "@/lib/users";
@@ -151,9 +152,9 @@ const plannedLeftoverInput = z.object({
 });
 
 /**
- * Reserve a future leftover slot before anything is cooked. It is an intent:
- * it deducts nothing and consumes no batch, and cooking the dish later still
- * produces real leftovers.
+ * Reserve a future leftover slot against a cook that is already on the plan.
+ * It deducts nothing yet, but it is bounded by that cook's portions, so you
+ * cannot schedule five portions out of a two-portion dinner.
  */
 export async function addPlannedLeftover(input: unknown): Promise<PlanActionResult> {
   const parsed = plannedLeftoverInput.safeParse(input);
@@ -171,6 +172,55 @@ export async function addPlannedLeftover(input: unknown): Promise<PlanActionResu
   if (!recipe) return { error: "That recipe isn't yours." };
 
   const planId = await ensurePlan(user.id, parsed.data.week);
+
+  const [source] = await db
+    .select()
+    .from(mealPlanEntries)
+    .where(
+      and(
+        eq(mealPlanEntries.planId, planId),
+        eq(mealPlanEntries.kind, "recipe"),
+        eq(mealPlanEntries.recipeId, recipe.id),
+      ),
+    )
+    .orderBy(mealPlanEntries.day)
+    .limit(1);
+
+  if (!source) {
+    return {
+      error: `Add ${recipe.title} as a meal first — leftovers have to come from a cook.`,
+    };
+  }
+  if (daysBetween(source.day, parsed.data.day) < 0) {
+    return { error: "Leftovers can't be eaten before the dish is cooked." };
+  }
+
+  const existing = await db
+    .select()
+    .from(mealPlanEntries)
+    .where(
+      and(
+        eq(mealPlanEntries.planId, planId),
+        eq(mealPlanEntries.kind, "leftover"),
+        eq(mealPlanEntries.recipeId, recipe.id),
+        eq(mealPlanEntries.status, "planned"),
+        isNull(mealPlanEntries.leftoverId),
+      ),
+    );
+
+  const alreadyPlanned = existing
+    .filter((row) => !(row.day === parsed.data.day && row.slot === parsed.data.slot))
+    .reduce((total, row) => total + row.portions, 0);
+
+  const available = source.portions - alreadyPlanned;
+  if (parsed.data.portions > available) {
+    return {
+      error:
+        available <= 0
+          ? `All ${source.portions} portion(s) of ${recipe.title} are already earmarked.`
+          : `Only ${available} portion(s) left to earmark from ${recipe.title}.`,
+    };
+  }
 
   await db
     .insert(mealPlanEntries)
