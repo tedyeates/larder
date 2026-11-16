@@ -60,8 +60,9 @@ Larder exposes a **read-only** MCP server at `/api/mcp`, authenticated with a si
 - Machine-readable setup notes: `/prompts/agent-setup.md`
 
 Tools: `list_pantry`, `expiring_soon`, `list_leftovers`, `get_week_plan`, `search_recipes`,
-`get_recipe`, `propose_shopping_list`, and `create_meal_plan` (which only writes a **draft** the
-human activates). Cooking, ticking shopping items and stock adjustments are human actions only.
+`get_recipe`, `propose_shopping_list`, `list_ingredients`, `create_ingredient`, `create_recipe`, and
+`create_meal_plan` (which only writes a **draft** the human activates). Cooking, ticking shopping
+items and stock adjustments are human actions only.
 
 ## Rules the code enforces
 

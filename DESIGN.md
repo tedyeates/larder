@@ -343,7 +343,10 @@ var to revoke). The served skill and setup prompt are public documents; the MCP 
 authenticates itself and is listed as public in `src/proxy.ts`.
 
 Tools shipped: `list_pantry`, `expiring_soon`, `list_leftovers`, `get_week_plan`, `search_recipes`,
-`get_recipe`, `propose_shopping_list`, `create_meal_plan`. The last one writes only a **draft**
+`get_recipe`, `propose_shopping_list`, `list_ingredients`, `create_ingredient`, `create_recipe`,
+`create_meal_plan`. Recipe writes are validated against the catalogue and refuse unconvertible
+units rather than guessing; the agent is instructed to present an online recipe, with its source,
+and wait for approval before calling `create_recipe`. Plans are written only as drafts
 (`meal_plans.status = 'draft'`, entries marked `created_by = 'agent'`); the Plan tab shows a banner
 to activate or discard, and discard removes only agent entries. Cooking and stock changes stay
 human-only.

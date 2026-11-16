@@ -63,12 +63,19 @@ get 401, the token is wrong. If you get 503, the server has no token configured.
 - \`search_recipes({ query?, limit? })\`
 - \`get_recipe({ recipe_id })\`
 - \`propose_shopping_list({ week_start? })\`
+- \`list_ingredients({ query?, limit? })\`
+- \`create_ingredient({ name, stock_unit, category?, grams_per_unit? })\`
+- \`create_recipe({ title, servings, source_url?, steps?, ingredients[] })\`
 - \`create_meal_plan({ week_start, note?, entries[] })\` — saves a **draft**
 
-\`create_meal_plan\` is the only write. It stores a draft that the human must
-activate in the Plan tab; until then it affects neither shopping nor cooking.
-An entry with \`kind: "leftover"\` is a planned leftover: it deducts nothing and
-is how you schedule days you intend to eat what you cook.
+Sourcing from the web: if the library has nothing suitable, find a recipe,
+present it with its source link, and only save it once the human agrees. Resolve
+each line with \`list_ingredients\`, create genuinely new items, then call
+\`create_recipe\`. It refuses lines it cannot convert rather than guessing.
+
+\`create_meal_plan\` stores a draft that the human must activate in the Plan tab;
+until then it affects neither shopping nor cooking. An entry with
+\`kind: "leftover"\` is a planned leftover: it deducts nothing.
 
 Cooking, ticking shopping items, and stock adjustments remain human actions.
 

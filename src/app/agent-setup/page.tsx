@@ -73,10 +73,15 @@ The full setup notes are at ${base}/prompts/agent-setup.md`;
             <code>create_meal_plan</code> — writes a <strong>draft</strong> you activate in the Plan
             tab
           </li>
+          <li>
+            <code>list_ingredients</code>, <code>create_ingredient</code>,{" "}
+            <code>create_recipe</code> — so it can save a recipe it found online, after you approve
+            it
+          </li>
         </ul>
         <p className="text-sm text-neutral-500">
           Everything else is human-only: cooking, ticking shopping items, adjusting stock. A model
-          can propose; only you confirm what left the pantry.
+          can propose and save recipes; only you confirm what left the pantry.
         </p>
       </section>
 

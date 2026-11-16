@@ -14,9 +14,11 @@ import {
 import { daysBetween } from "@/domain/dates";
 import { balance } from "@/domain/ledger";
 import { diffAgainstPantry, planRequirements } from "@/domain/plan";
-import { isUnitCode, type UnitCode } from "@/domain/units";
+import { assertUnitCode, isUnitCode, toBase, type UnitCode } from "@/domain/units";
+import { CATEGORIES } from "@/lib/ingredient-options";
 import { getPantryRows } from "@/lib/pantry";
 import { currentWeek, ensurePlan, listLeftovers, loadWeek } from "@/lib/plan";
+import { slugify } from "@/lib/slug";
 
 const INSTRUCTIONS = `Larder is a deterministic pantry and meal-planning ledger.
 
@@ -29,6 +31,9 @@ Rules that matter:
 - Prefer stock that is close to its best-before date.
 - You may propose a week with create_meal_plan. It is saved as a draft: the human
   must activate it before it affects shopping or cooking.
+- When the library has nothing suitable, source a recipe from the web, present it
+  with its source link, and only save it after the human agrees. Resolve ingredient
+  names with list_ingredients first; create_ingredient for anything genuinely new.
 
 You cannot cook, tick shopping items, or adjust stock. The human confirms reality.`;
 
@@ -304,6 +309,263 @@ export function buildLarderServer(userId: string): McpServer {
         week,
         items: shortfalls,
         unresolved: unresolved.map((line) => ({ recipe_id: line.recipeId, detail: line.detail })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "list_ingredients",
+    {
+      title: "List ingredients",
+      description:
+        "Search the ingredient catalogue by name or alias. Use this before saving a recipe so every line resolves to a real id and stock unit.",
+      inputSchema: {
+        query: z.string().optional(),
+        limit: z.number().int().min(1).max(200).optional(),
+      },
+    },
+    async ({ query, limit }) => {
+      const rows = await getDb()
+        .select({
+          id: ingredients.id,
+          name: ingredients.name,
+          stockUnit: ingredients.stockUnit,
+          category: ingredients.category,
+          aliases: ingredients.aliases,
+        })
+        .from(ingredients)
+        .where(eq(ingredients.userId, userId));
+
+      const needle = query?.trim().toLowerCase();
+      const filtered = rows.filter(
+        (row) =>
+          needle === undefined ||
+          needle === "" ||
+          row.name.toLowerCase().includes(needle) ||
+          (row.aliases ?? []).some((alias) => alias.toLowerCase().includes(needle)),
+      );
+
+      return text(
+        filtered.slice(0, limit ?? 50).map((row) => ({
+          id: row.id,
+          name: row.name,
+          stock_unit: row.stockUnit,
+          category: row.category,
+          aliases: row.aliases,
+        })),
+      );
+    },
+  );
+
+  server.registerTool(
+    "create_ingredient",
+    {
+      title: "Create an ingredient",
+      description:
+        "Add one ingredient to the catalogue. Idempotent by name. Choose the unit you would actually count it in at home, and give grams per unit when the recipe measures it differently.",
+      inputSchema: {
+        name: z.string().min(1).max(80),
+        stock_unit: z.string().min(1).max(16),
+        category: z.enum(CATEGORIES).optional(),
+        grams_per_unit: z
+          .number()
+          .positive()
+          .max(100_000)
+          .optional()
+          .describe("Grams per one counted unit, e.g. 150 for an onion or 3 for a garlic clove"),
+      },
+    },
+    async ({ name, stock_unit, category, grams_per_unit }) => {
+      let unit: UnitCode;
+      try {
+        unit = assertUnitCode(stock_unit);
+      } catch {
+        return text({ error: `Unknown unit: ${stock_unit}` });
+      }
+
+      const slug = slugify(name);
+      if (slug === "") return text({ error: "That name has no letters or numbers." });
+
+      const db = getDb();
+      const [existing] = await db
+        .select()
+        .from(ingredients)
+        .where(and(eq(ingredients.userId, userId), eq(ingredients.slug, slug)))
+        .limit(1);
+      if (existing) {
+        return text({
+          id: existing.id,
+          name: existing.name,
+          stock_unit: existing.stockUnit,
+          category: existing.category,
+          existed: true,
+        });
+      }
+
+      const chosen = category ?? "other";
+      const [created] = await db
+        .insert(ingredients)
+        .values({
+          userId,
+          name: name.trim(),
+          slug,
+          category: chosen,
+          stockUnit: unit,
+          gramsPer: grams_per_unit !== undefined ? { each: grams_per_unit } : null,
+          shelfLifeDays:
+            chosen === "frozen" ? 180 : chosen === "dry" || chosen === "tins" ? 730 : 7,
+        })
+        .returning();
+
+      if (!created) return text({ error: "Could not create that ingredient." });
+
+      return text({
+        id: created.id,
+        name: created.name,
+        stock_unit: created.stockUnit,
+        category: created.category,
+        existed: false,
+      });
+    },
+  );
+
+  const recipeLineInput = z.object({
+    ingredient_id: z.uuid().optional(),
+    name: z.string().min(1).max(120).optional(),
+    quantity: z.number().positive().max(1_000_000),
+    unit: z.string().min(1).max(16),
+    note: z.string().max(200).optional(),
+    optional: z.boolean().optional(),
+  });
+
+  server.registerTool(
+    "create_recipe",
+    {
+      title: "Save a recipe",
+      description:
+        "Save a recipe the human has approved. Every line must resolve to a catalogue ingredient; unresolved names come back so you can ask or create them. Units must convert to the ingredient's stock unit.",
+      inputSchema: {
+        title: z.string().min(1).max(120),
+        servings: z.number().int().min(1).max(24),
+        source_url: z.url().optional().describe("Where you found it"),
+        steps: z
+          .union([z.string(), z.array(z.string())])
+          .optional()
+          .describe("Markdown steps"),
+        ingredients: z.array(recipeLineInput).min(1).max(60),
+      },
+    },
+    async ({ title, servings, source_url, steps, ingredients: lines }) => {
+      const db = getDb();
+      const catalogue = await db.select().from(ingredients).where(eq(ingredients.userId, userId));
+
+      const byId = new Map(catalogue.map((item) => [item.id, item]));
+      const byName = new Map<string, (typeof catalogue)[number]>();
+      for (const item of catalogue) {
+        byName.set(item.name.toLowerCase(), item);
+        for (const alias of item.aliases ?? []) byName.set(alias.toLowerCase(), item);
+      }
+
+      const unresolved: string[] = [];
+      const conversionErrors: string[] = [];
+      const resolved: {
+        item: (typeof catalogue)[number];
+        quantity: number;
+        unit: string;
+        note?: string;
+        optional?: boolean;
+      }[] = [];
+
+      for (const line of lines) {
+        const item = line.ingredient_id
+          ? byId.get(line.ingredient_id)
+          : line.name
+            ? (byName.get(line.name.toLowerCase()) ??
+              catalogue.find((candidate) => candidate.slug === slugify(line.name ?? "")))
+            : undefined;
+
+        if (!item) {
+          unresolved.push(line.name ?? line.ingredient_id ?? "unknown");
+          continue;
+        }
+
+        try {
+          toBase(line.quantity, assertUnitCode(line.unit), {
+            id: item.id,
+            name: item.name,
+            stockUnit: item.stockUnit as UnitCode,
+            gramsPer: item.gramsPer ?? undefined,
+          });
+        } catch {
+          conversionErrors.push(`${item.name}: ${line.unit} does not convert to ${item.stockUnit}`);
+          continue;
+        }
+
+        resolved.push({
+          item,
+          quantity: line.quantity,
+          unit: line.unit,
+          note: line.note,
+          optional: line.optional,
+        });
+      }
+
+      if (unresolved.length > 0 || conversionErrors.length > 0) {
+        return text({
+          error: "Nothing was saved. Fix these lines and call again.",
+          unresolved,
+          conversion_errors: conversionErrors,
+          hint: "Use list_ingredients to find ids, create_ingredient for new items, or ask the human how they measure it.",
+        });
+      }
+
+      const stepList =
+        typeof steps === "string"
+          ? steps
+              .split("\n")
+              .map((step) => step.trim())
+              .filter((step) => step.length > 0)
+          : (steps ?? []).map((step) => step.trim()).filter((step) => step.length > 0);
+
+      const recipeId = await db.transaction(async (tx) => {
+        const [recipe] = await tx
+          .insert(recipes)
+          .values({
+            userId,
+            title: title.trim(),
+            servings,
+            sourceUrl: source_url ?? null,
+            steps: stepList.map((step) => ({ text: step })),
+            createdBy: "agent",
+          })
+          .returning({ id: recipes.id });
+        if (!recipe) throw new Error("Could not save the recipe");
+
+        await tx.insert(recipeIngredients).values(
+          resolved.map((line, index) => ({
+            recipeId: recipe.id,
+            ingredientId: line.item.id,
+            rawText: `${line.quantity} ${line.unit} ${line.item.name}${line.note ? ` (${line.note})` : ""}`,
+            quantity: line.quantity,
+            unit: line.unit,
+            note: line.note ?? null,
+            isOptional: line.optional ?? false,
+            sortOrder: index,
+            parseStatus: "ok",
+          })),
+        );
+
+        return recipe.id;
+      });
+
+      revalidatePath("/recipes");
+
+      return text({
+        recipe_id: recipeId,
+        title,
+        lines: resolved.length,
+        source_url: source_url ?? null,
+        next: "Add it to a draft with create_meal_plan, then ask the human to activate it.",
       });
     },
   );
