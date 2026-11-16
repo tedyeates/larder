@@ -2,6 +2,34 @@
 
 import { useState } from "react";
 
+/**
+ * Clipboard writes need a secure context (https or localhost). On a LAN IP the
+ * modern API is missing, so fall back to the old selection trick rather than
+ * failing silently.
+ */
+function legacyCopy(text: string): boolean {
+  const area = document.createElement("textarea");
+  area.value = text;
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.top = "0";
+  area.style.left = "0";
+  area.style.opacity = "0";
+  document.body.appendChild(area);
+  area.select();
+  area.setSelectionRange(0, text.length);
+
+  let ok = false;
+  try {
+    ok = document.execCommand("copy");
+  } catch {
+    ok = false;
+  }
+
+  document.body.removeChild(area);
+  return ok;
+}
+
 export function CopyBlock({
   title,
   code,
@@ -14,12 +42,24 @@ export function CopyBlock({
   secret?: boolean;
 }) {
   const [revealed, setRevealed] = useState(!secret);
-  const [copied, setCopied] = useState(false);
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
 
   async function copy() {
-    await navigator.clipboard.writeText(code);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
+    let ok = false;
+
+    if (navigator.clipboard && window.isSecureContext) {
+      try {
+        await navigator.clipboard.writeText(code);
+        ok = true;
+      } catch {
+        ok = legacyCopy(code);
+      }
+    } else {
+      ok = legacyCopy(code);
+    }
+
+    setState(ok ? "copied" : "failed");
+    if (ok) setTimeout(() => setState("idle"), 1500);
   }
 
   return (
@@ -41,10 +81,15 @@ export function CopyBlock({
             onClick={copy}
             className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-700 dark:border-neutral-700 dark:text-neutral-300"
           >
-            {copied ? "Copied" : "Copy"}
+            {state === "copied" ? "Copied" : state === "failed" ? "Select it" : "Copy"}
           </button>
         </div>
       </div>
+      {state === "failed" && (
+        <p className="border-b border-neutral-200 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-neutral-800 dark:bg-amber-950 dark:text-amber-200">
+          Your browser blocked the clipboard. Click the code, select all, and copy manually.
+        </p>
+      )}
       <pre className="overflow-x-auto px-3 py-3 text-xs leading-relaxed">
         <code className={language === "json" ? "language-json" : undefined}>
           {revealed ? code : "•".repeat(Math.min(code.length, 64))}
