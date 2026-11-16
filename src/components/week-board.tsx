@@ -50,7 +50,23 @@ export function WeekBoard({
   const [kind, setKind] = useState<"recipe" | "leftover">("recipe");
   const [recipeId, setRecipeId] = useState(recipes[0]?.id ?? "");
   const [leftoverChoice, setLeftoverChoice] = useState("");
-  const [portions, setPortions] = useState("1");
+  const [portions, setPortions] = useState("2");
+
+  function servingsFor(id: string): number {
+    return recipes.find((recipe) => recipe.id === id)?.servings ?? 2;
+  }
+
+  function chooseKind(value: "recipe" | "leftover") {
+    setKind(value);
+    if (value === "recipe") {
+      setPortions(String(servingsFor(recipeId)));
+      return;
+    }
+    const choice = leftoverChoice || defaultChoice();
+    setLeftoverChoice(choice);
+    const available = availableFor(choice);
+    setPortions(available > 0 ? String(Math.min(1, available)) : "");
+  }
 
   function availableFor(choice: string): number {
     if (choice.startsWith("batch:")) {
@@ -82,8 +98,12 @@ export function WeekBoard({
     setRecipeId(recipes[0]?.id ?? "");
     const choice = defaultChoice();
     setLeftoverChoice(choice);
-    const available = availableFor(choice);
-    setPortions(available > 0 ? String(Math.min(1, available)) : "2");
+    if (recipes[0]) {
+      setPortions(String(recipes[0].servings));
+    } else {
+      const available = availableFor(choice);
+      setPortions(available > 0 ? String(Math.min(1, available)) : "");
+    }
     setMessage(null);
   }
 
@@ -271,7 +291,8 @@ export function WeekBoard({
                           <p className="text-sm font-medium">
                             {entry.title}
                             <span className="ml-2 text-xs font-normal text-neutral-500">
-                              {entry.portions} portion(s)
+                              {entry.portions}{" "}
+                              {entry.kind === "leftover" ? "portion(s)" : "serving(s)"}
                             </span>
                           </p>
                           {entry.kind === "leftover" && (
@@ -348,7 +369,7 @@ export function WeekBoard({
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setKind(value)}
+                  onClick={() => chooseKind(value)}
                   aria-pressed={kind === value}
                   className={`rounded-md px-2 py-1.5 text-sm capitalize ${
                     kind === value
@@ -371,7 +392,10 @@ export function WeekBoard({
                   <span className="font-medium">Recipe</span>
                   <select
                     value={recipeId}
-                    onChange={(event) => setRecipeId(event.target.value)}
+                    onChange={(event) => {
+                      setRecipeId(event.target.value);
+                      setPortions(String(servingsFor(event.target.value)));
+                    }}
                     className="w-full rounded-lg border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
                   >
                     {recipes.map((recipe) => (
@@ -423,17 +447,41 @@ export function WeekBoard({
             )}
 
             <label className="block space-y-1 text-sm">
-              <span className="font-medium">Portions</span>
+              <span className="font-medium">
+                {kind === "recipe" ? "Servings to cook" : "Portions"}
+              </span>
               <input
                 type="number"
-                min="0.5"
-                step="0.5"
-                max={kind === "leftover" ? Math.max(availableFor(leftoverChoice), 0.5) : 24}
+                min={kind === "recipe" ? "1" : "0.5"}
+                step={kind === "recipe" ? "1" : "0.5"}
+                max={kind === "leftover" ? Math.max(availableFor(leftoverChoice), 0.5) : 48}
                 value={portions}
                 onChange={(event) => setPortions(event.target.value)}
                 className="w-full rounded-lg border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
               />
+              {kind === "recipe" && (
+                <span className="block text-xs text-neutral-500">
+                  {recipes.find((recipe) => recipe.id === recipeId)?.title ?? "This recipe"} makes{" "}
+                  {servingsFor(recipeId)} per batch. You eat one that night, so{" "}
+                  {Math.max(0, Number(portions || 0) - 1)} spare.
+                </span>
+              )}
             </label>
+
+            {kind === "recipe" && (
+              <div className="flex gap-2">
+                {[1, 2, 3].map((multiplier) => (
+                  <button
+                    key={multiplier}
+                    type="button"
+                    onClick={() => setPortions(String(servingsFor(recipeId) * multiplier))}
+                    className="flex-1 rounded-md border border-neutral-300 px-2 py-1.5 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-400"
+                  >
+                    ×{multiplier} ({servingsFor(recipeId) * multiplier} servings)
+                  </button>
+                ))}
+              </div>
+            )}
 
             <button
               type="button"

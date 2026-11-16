@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { type PlanEntryView, derivePlannedCooks } from "./plan";
+import { derivePlannedCooks, type PlanEntryView } from "./plan";
 
-function entry(overrides: Partial<PlanEntryView> & Pick<PlanEntryView, "id" | "day" | "slot">): PlanEntryView {
+function entry(
+  overrides: Partial<PlanEntryView> & Pick<PlanEntryView, "id" | "day" | "slot">,
+): PlanEntryView {
   return {
     kind: "recipe",
     recipeId: "recipe-1",
