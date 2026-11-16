@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { ingredients, recipeIngredients, recipes } from "@/db/schema";
+import { cookEvents, ingredients, mealPlanEntries, recipeIngredients, recipes } from "@/db/schema";
 import { assertUnitCode, toBase, type UnitCode } from "@/domain/units";
 import { auth } from "@/lib/auth/server";
 import { getOrCreateAppUser } from "@/lib/users";
@@ -30,6 +30,59 @@ export interface CreateRecipeResult {
 export interface UpdateRecipeResult {
   readonly error?: string;
   readonly recipeId?: string;
+}
+
+export interface DeleteRecipeResult {
+  readonly error?: string;
+  readonly deleted?: boolean;
+}
+
+/**
+ * Delete a recipe, unless the ledger depends on it. Plan entries and cook
+ * history stay: removing either would rewrite what actually happened.
+ */
+export async function deleteRecipe(recipeId: string): Promise<DeleteRecipeResult> {
+  const parsed = z.uuid().safeParse(recipeId);
+  if (!parsed.success) return { error: "That recipe id doesn't look right." };
+
+  const { data: session } = await auth.getSession();
+  if (!session?.user) return { error: "You are signed out." };
+
+  const appUser = await getOrCreateAppUser({
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
+  });
+  const db = getDb();
+
+  const [recipe] = await db
+    .select({ id: recipes.id, title: recipes.title })
+    .from(recipes)
+    .where(and(eq(recipes.id, parsed.data), eq(recipes.userId, appUser.id)))
+    .limit(1);
+  if (!recipe) return { error: "That recipe isn't yours." };
+
+  const [planned] = await db
+    .select({ id: mealPlanEntries.id })
+    .from(mealPlanEntries)
+    .where(eq(mealPlanEntries.recipeId, recipe.id))
+    .limit(1);
+  if (planned) {
+    return { error: "That recipe is on a meal plan. Remove those entries first." };
+  }
+
+  const [cooked] = await db
+    .select({ id: cookEvents.id })
+    .from(cookEvents)
+    .where(eq(cookEvents.recipeId, recipe.id))
+    .limit(1);
+  if (cooked) {
+    return { error: "That recipe is in your cook history, so it has to stay." };
+  }
+
+  await db.delete(recipes).where(eq(recipes.id, recipe.id));
+  revalidatePath("/recipes");
+  return { deleted: true };
 }
 
 /** Replace a recipe's header and ingredient lines in one transaction. */

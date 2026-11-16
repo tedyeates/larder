@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { AppNav } from "@/components/app-nav";
+import { DeleteRecipeButton } from "@/components/delete-recipe-button";
 import { getDb } from "@/db";
 import { ingredients, recipeIngredients, recipes } from "@/db/schema";
 import { auth } from "@/lib/auth/server";
@@ -54,12 +55,15 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
       <header className="mt-3 mb-6 space-y-2">
         <div className="flex items-start justify-between gap-4">
           <h1 className="text-3xl font-semibold tracking-tight text-balance">{recipe.title}</h1>
-          <Link
-            href={`/recipes/${recipe.id}/edit`}
-            className="shrink-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
-          >
-            Edit
-          </Link>
+          <div className="flex shrink-0 items-start gap-2">
+            <Link
+              href={`/recipes/${recipe.id}/edit`}
+              className="rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+            >
+              Edit
+            </Link>
+            <DeleteRecipeButton recipeId={recipe.id} title={recipe.title} />
+          </div>
         </div>
         <p className="text-sm text-neutral-500">
           {recipe.servings} servings
