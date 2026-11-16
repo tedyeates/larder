@@ -3,7 +3,14 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { cookEntry } from "@/actions/cook";
-import { addLeftoverToPlan, addRecipeToPlan, removePlanEntry } from "@/actions/plan";
+import {
+  activatePlan,
+  addLeftoverToPlan,
+  addPlannedLeftover,
+  addRecipeToPlan,
+  discardDraft,
+  removePlanEntry,
+} from "@/actions/plan";
 import { generateShoppingList } from "@/actions/shop";
 import type { LeftoverOption, PlanEntryView, RecipeOption, Slot } from "@/lib/plan";
 
@@ -21,12 +28,14 @@ function dayLabel(day: string): string {
 export function WeekBoard({
   week,
   days,
+  status,
   entries,
   recipes,
   leftovers,
 }: {
   week: string;
   days: readonly string[];
+  status: "draft" | "active" | "archived";
   entries: readonly PlanEntryView[];
   recipes: readonly RecipeOption[];
   leftovers: readonly LeftoverOption[];
@@ -37,14 +46,18 @@ export function WeekBoard({
   const [adding, setAdding] = useState<{ day: string; slot: Slot } | null>(null);
   const [kind, setKind] = useState<"recipe" | "leftover">("recipe");
   const [recipeId, setRecipeId] = useState(recipes[0]?.id ?? "");
-  const [leftoverId, setLeftoverId] = useState(leftovers[0]?.id ?? "");
+  const [leftoverChoice, setLeftoverChoice] = useState(
+    leftovers[0] ? `batch:${leftovers[0].id}` : recipes[0] ? `planned:${recipes[0].id}` : "",
+  );
   const [portions, setPortions] = useState("2");
 
   function openAdd(day: string, slot: Slot) {
     setAdding({ day, slot });
     setKind(recipes.length > 0 ? "recipe" : "leftover");
     setRecipeId(recipes[0]?.id ?? "");
-    setLeftoverId(leftovers[0]?.id ?? "");
+    setLeftoverChoice(
+      leftovers[0] ? `batch:${leftovers[0].id}` : recipes[0] ? `planned:${recipes[0].id}` : "",
+    );
     setPortions("2");
     setMessage(null);
   }
@@ -61,13 +74,21 @@ export function WeekBoard({
               recipeId,
               portions: Number(portions),
             })
-          : await addLeftoverToPlan({
-              week,
-              day: adding.day,
-              slot: adding.slot,
-              leftoverId,
-              portions: Number(portions),
-            });
+          : leftoverChoice.startsWith("batch:")
+            ? await addLeftoverToPlan({
+                week,
+                day: adding.day,
+                slot: adding.slot,
+                leftoverId: leftoverChoice.slice("batch:".length),
+                portions: Number(portions),
+              })
+            : await addPlannedLeftover({
+                week,
+                day: adding.day,
+                slot: adding.slot,
+                recipeId: leftoverChoice.slice("planned:".length),
+                portions: Number(portions),
+              });
 
       setMessage(result.error ?? result.message ?? null);
       if (!result.error) setAdding(null);
@@ -102,8 +123,44 @@ export function WeekBoard({
     });
   }
 
+  function settleDraft(action: "activate" | "discard") {
+    startTransition(async () => {
+      const result = action === "activate" ? await activatePlan(week) : await discardDraft(week);
+      setMessage(result.error ?? result.message ?? null);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-4">
+      {status === "draft" && (
+        <div className="rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950">
+          <p className="font-medium">Draft from an agent</p>
+          <p className="mt-1 text-amber-900 dark:text-amber-200">
+            Nothing here is confirmed. Activate to keep it, or discard to remove the agent&apos;s
+            entries. Your own meals are always kept.
+          </p>
+          <div className="mt-2 flex gap-2">
+            <button
+              type="button"
+              onClick={() => settleDraft("activate")}
+              disabled={pending}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+            >
+              Activate
+            </button>
+            <button
+              type="button"
+              onClick={() => settleDraft("discard")}
+              disabled={pending}
+              className="rounded-md border border-amber-400 px-3 py-1.5 text-xs text-amber-900 disabled:opacity-50 dark:border-amber-700 dark:text-amber-200"
+            >
+              Discard
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-neutral-500">
           {entries.length} meal(s) planned · {leftovers.length} leftover(s) waiting
@@ -157,7 +214,7 @@ export function WeekBoard({
                           </p>
                           {entry.kind === "leftover" && (
                             <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
-                              leftover
+                              {entry.leftoverId === null ? "planned leftover" : "leftover"}
                             </span>
                           )}
                         </div>
@@ -257,24 +314,40 @@ export function WeekBoard({
                   </select>
                 </label>
               )
-            ) : leftovers.length === 0 ? (
+            ) : leftovers.length === 0 && recipes.length === 0 ? (
               <p className="text-sm text-neutral-500">
-                No leftovers waiting. Cook something first.
+                Nothing to draw on yet. Cook something, or add a recipe first.
               </p>
             ) : (
               <label className="block space-y-1 text-sm">
-                <span className="font-medium">Leftover</span>
+                <span className="font-medium">Leftovers from</span>
                 <select
-                  value={leftoverId}
-                  onChange={(event) => setLeftoverId(event.target.value)}
+                  value={leftoverChoice}
+                  onChange={(event) => setLeftoverChoice(event.target.value)}
                   className="w-full rounded-lg border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
                 >
-                  {leftovers.map((batch) => (
-                    <option key={batch.id} value={batch.id}>
-                      {batch.label} ({batch.portions} left)
-                    </option>
-                  ))}
+                  {leftovers.length > 0 && (
+                    <optgroup label="Already cooked">
+                      {leftovers.map((batch) => (
+                        <option key={batch.id} value={`batch:${batch.id}`}>
+                          {batch.label} ({batch.portions} left)
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {recipes.length > 0 && (
+                    <optgroup label="From a dish you'll cook">
+                      {recipes.map((recipe) => (
+                        <option key={recipe.id} value={`planned:${recipe.id}`}>
+                          {recipe.title}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
                 </select>
+                <span className="block text-xs text-neutral-500">
+                  Planning ahead is fine — the pantry only changes when you actually cook.
+                </span>
               </label>
             )}
 
@@ -293,7 +366,7 @@ export function WeekBoard({
             <button
               type="button"
               onClick={submitAdd}
-              disabled={pending || (kind === "recipe" ? recipeId === "" : leftoverId === "")}
+              disabled={pending || (kind === "recipe" ? recipeId === "" : leftoverChoice === "")}
               className="w-full rounded-lg bg-neutral-900 px-4 py-2.5 text-sm font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
             >
               {pending ? "Adding…" : "Add to plan"}

@@ -30,8 +30,13 @@ action to the human.
    when nothing fits.
 6. Propose the week in conversation. Be explicit about portions and about which
    expiring items each meal consumes.
-7. `propose_shopping_list` — show what still needs buying. It writes nothing; the
+7. Submit it with `create_meal_plan`. It lands as a **draft**; tell the human to
+   activate or discard it in the Plan tab. Never claim it is live.
+8. `propose_shopping_list` — show what still needs buying. It writes nothing; the
    human adds items in the app.
+
+Planned leftovers are allowed: `kind: "leftover"` with a `recipe_id` and no batch
+is an intent to eat something you have not cooked yet. It deducts nothing.
 
 ## Good output
 

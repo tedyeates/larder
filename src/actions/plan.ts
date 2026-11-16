@@ -142,6 +142,123 @@ export async function addLeftoverToPlan(input: unknown): Promise<PlanActionResul
   return { message: `${batch.label} set aside.` };
 }
 
+const plannedLeftoverInput = z.object({
+  week: weekInput,
+  day: weekInput,
+  slot: slotInput,
+  recipeId: z.uuid(),
+  portions: z.coerce.number().positive().max(24),
+});
+
+/**
+ * Reserve a future leftover slot before anything is cooked. It is an intent:
+ * it deducts nothing and consumes no batch, and cooking the dish later still
+ * produces real leftovers.
+ */
+export async function addPlannedLeftover(input: unknown): Promise<PlanActionResult> {
+  const parsed = plannedLeftoverInput.safeParse(input);
+  if (!parsed.success) return { error: "Pick a dish and a portion count." };
+
+  const user = await context();
+  if (!user) return { error: "You are signed out." };
+
+  const db = getDb();
+  const [recipe] = await db
+    .select({ id: recipes.id, title: recipes.title })
+    .from(recipes)
+    .where(and(eq(recipes.id, parsed.data.recipeId), eq(recipes.userId, user.id)))
+    .limit(1);
+  if (!recipe) return { error: "That recipe isn't yours." };
+
+  const planId = await ensurePlan(user.id, parsed.data.week);
+
+  await db
+    .insert(mealPlanEntries)
+    .values({
+      planId,
+      day: parsed.data.day,
+      slot: parsed.data.slot,
+      kind: "leftover",
+      recipeId: recipe.id,
+      leftoverId: null,
+      portions: parsed.data.portions,
+      status: "planned",
+    })
+    .onConflictDoUpdate({
+      target: [mealPlanEntries.planId, mealPlanEntries.day, mealPlanEntries.slot],
+      set: {
+        kind: "leftover",
+        recipeId: recipe.id,
+        leftoverId: null,
+        portions: parsed.data.portions,
+        status: "planned",
+        cookEventId: null,
+      },
+    });
+
+  revalidatePath(`/plan/${parsed.data.week}`);
+  return { message: `${recipe.title} planned as leftovers.` };
+}
+
+export async function activatePlan(week: unknown): Promise<PlanActionResult> {
+  const parsed = weekInput.safeParse(week);
+  if (!parsed.success) return { error: "That week doesn't look right." };
+
+  const user = await context();
+  if (!user) return { error: "You are signed out." };
+
+  const db = getDb();
+  const [plan] = await db
+    .select({ id: mealPlans.id })
+    .from(mealPlans)
+    .where(and(eq(mealPlans.userId, user.id), eq(mealPlans.weekStart, parsed.data)))
+    .limit(1);
+  if (!plan) return { error: "There's no plan for that week." };
+
+  await db.update(mealPlans).set({ status: "active" }).where(eq(mealPlans.id, plan.id));
+  revalidatePath(`/plan/${parsed.data}`);
+  revalidatePath("/plan");
+  return { message: "Plan activated." };
+}
+
+export async function discardDraft(week: unknown): Promise<PlanActionResult> {
+  const parsed = weekInput.safeParse(week);
+  if (!parsed.success) return { error: "That week doesn't look right." };
+
+  const user = await context();
+  if (!user) return { error: "You are signed out." };
+
+  const db = getDb();
+  const [plan] = await db
+    .select({ id: mealPlans.id })
+    .from(mealPlans)
+    .where(and(eq(mealPlans.userId, user.id), eq(mealPlans.weekStart, parsed.data)))
+    .limit(1);
+  if (!plan) return { error: "There's no plan for that week." };
+
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(mealPlanEntries)
+      .where(and(eq(mealPlanEntries.planId, plan.id), eq(mealPlanEntries.createdBy, "agent")));
+
+    const [remaining] = await tx
+      .select({ id: mealPlanEntries.id })
+      .from(mealPlanEntries)
+      .where(eq(mealPlanEntries.planId, plan.id))
+      .limit(1);
+
+    if (remaining) {
+      await tx.update(mealPlans).set({ status: "active" }).where(eq(mealPlans.id, plan.id));
+    } else {
+      await tx.delete(mealPlans).where(eq(mealPlans.id, plan.id));
+    }
+  });
+
+  revalidatePath(`/plan/${parsed.data}`);
+  revalidatePath("/plan");
+  return { message: "Draft discarded." };
+}
+
 export async function removePlanEntry(entryId: string): Promise<PlanActionResult> {
   const user = await context();
   if (!user) return { error: "You are signed out." };

@@ -1,0 +1,1 @@
+ALTER TABLE "meal_plan_entries" ADD COLUMN "created_by" "creator" DEFAULT 'manual' NOT NULL;

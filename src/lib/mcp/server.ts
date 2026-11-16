@@ -1,13 +1,22 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { and, eq } from "drizzle-orm";
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { ingredients, recipeIngredients, recipes, stockEntries } from "@/db/schema";
+import {
+  ingredients,
+  mealPlanEntries,
+  mealPlans,
+  recipeIngredients,
+  recipes,
+  stockEntries,
+} from "@/db/schema";
+import { daysBetween } from "@/domain/dates";
 import { balance } from "@/domain/ledger";
 import { diffAgainstPantry, planRequirements } from "@/domain/plan";
 import { isUnitCode, type UnitCode } from "@/domain/units";
 import { getPantryRows } from "@/lib/pantry";
-import { currentWeek, listLeftovers, loadWeek } from "@/lib/plan";
+import { currentWeek, ensurePlan, listLeftovers, loadWeek } from "@/lib/plan";
 
 const INSTRUCTIONS = `Larder is a deterministic pantry and meal-planning ledger.
 
@@ -18,8 +27,10 @@ Rules that matter:
 - Cooking deducts oldest-first. Plans are proposals until the human cooks.
 - Leftovers are already-cooked portions: assigning one to a meal deducts nothing.
 - Prefer stock that is close to its best-before date.
+- You may propose a week with create_meal_plan. It is saved as a draft: the human
+  must activate it before it affects shopping or cooking.
 
-These tools are read-only. The human confirms purchases and cooking in the app.`;
+You cannot cook, tick shopping items, or adjust stock. The human confirms reality.`;
 
 const text = (value: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
@@ -293,6 +304,109 @@ export function buildLarderServer(userId: string): McpServer {
         week,
         items: shortfalls,
         unresolved: unresolved.map((line) => ({ recipe_id: line.recipeId, detail: line.detail })),
+      });
+    },
+  );
+
+  server.registerTool(
+    "create_meal_plan",
+    {
+      title: "Create a draft meal plan",
+      description:
+        "Propose meals for a week. Saved as a DRAFT: it does not affect shopping or cooking until the human activates it. Overwrites the slots it targets, leaves the rest alone.",
+      inputSchema: {
+        week_start: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .describe("Monday of the week"),
+        note: z.string().max(500).optional().describe("Why this plan, in one or two sentences"),
+        entries: z
+          .array(
+            z.object({
+              day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+              slot: z.enum(["lunch", "dinner"]),
+              kind: z.enum(["recipe", "leftover"]).default("recipe"),
+              recipe_id: z.uuid().optional(),
+              portions: z.number().min(0.5).max(24),
+            }),
+          )
+          .min(1)
+          .max(21),
+      },
+    },
+    async ({ week_start, note, entries }) => {
+      const db = getDb();
+
+      const outside = entries.filter((entry) => {
+        const offset = daysBetween(week_start, entry.day);
+        return offset < 0 || offset > 6;
+      });
+      if (outside.length > 0) return text({ error: "Every day must fall inside that week." });
+
+      const missingRecipe = entries.filter(
+        (entry) =>
+          (entry.kind === "recipe" || entry.kind === "leftover") && entry.recipe_id === undefined,
+      );
+      if (missingRecipe.length > 0) {
+        return text({ error: "Every entry needs a recipe_id." });
+      }
+
+      const recipeIds = [
+        ...new Set(entries.flatMap((entry) => (entry.recipe_id ? [entry.recipe_id] : []))),
+      ];
+      const owned = await db
+        .select({ id: recipes.id })
+        .from(recipes)
+        .where(eq(recipes.userId, userId));
+      const ownedIds = new Set(owned.map((recipe) => recipe.id));
+      const foreign = recipeIds.filter((id) => !ownedIds.has(id));
+      if (foreign.length > 0) return text({ error: "One or more recipes aren't in the library." });
+
+      const planId = await ensurePlan(userId, week_start);
+
+      await db.transaction(async (tx) => {
+        await tx
+          .update(mealPlans)
+          .set({ status: "draft", createdBy: "agent", notes: note ?? null })
+          .where(eq(mealPlans.id, planId));
+
+        for (const entry of entries) {
+          await tx
+            .insert(mealPlanEntries)
+            .values({
+              planId,
+              day: entry.day,
+              slot: entry.slot,
+              kind: entry.kind,
+              recipeId: entry.recipe_id ?? null,
+              leftoverId: null,
+              portions: entry.portions,
+              status: "planned",
+              createdBy: "agent",
+            })
+            .onConflictDoUpdate({
+              target: [mealPlanEntries.planId, mealPlanEntries.day, mealPlanEntries.slot],
+              set: {
+                kind: entry.kind,
+                recipeId: entry.recipe_id ?? null,
+                leftoverId: null,
+                portions: entry.portions,
+                status: "planned",
+                createdBy: "agent",
+                cookEventId: null,
+              },
+            });
+        }
+      });
+
+      revalidatePath("/plan");
+      revalidatePath(`/plan/${week_start}`);
+
+      return text({
+        week: week_start,
+        status: "draft",
+        entries_written: entries.length,
+        next: "Ask the human to open the Plan tab and activate or discard the draft.",
       });
     },
   );

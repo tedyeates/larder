@@ -69,10 +69,14 @@ The full setup notes are at ${base}/prompts/agent-setup.md`;
           <li>
             <code>propose_shopping_list</code> — calculates the shortfall, writes nothing
           </li>
+          <li>
+            <code>create_meal_plan</code> — writes a <strong>draft</strong> you activate in the Plan
+            tab
+          </li>
         </ul>
         <p className="text-sm text-neutral-500">
-          Deliberately absent: cooking, ticking shopping items, and stock adjustments. A model can
-          plan; only you can confirm what actually left the pantry.
+          Everything else is human-only: cooking, ticking shopping items, adjusting stock. A model
+          can propose; only you confirm what left the pantry.
         </p>
       </section>
 

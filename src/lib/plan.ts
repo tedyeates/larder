@@ -18,11 +18,13 @@ export interface PlanEntryView {
   readonly title: string;
   readonly portions: number;
   readonly status: EntryStatus;
+  readonly createdBy: "manual" | "agent";
 }
 
 export interface WeekView {
   readonly week: string;
   readonly planId: string | null;
+  readonly status: "draft" | "active" | "archived";
   readonly entries: readonly PlanEntryView[];
 }
 
@@ -38,7 +40,7 @@ export async function loadWeek(userId: string, week: string): Promise<WeekView> 
     .where(and(eq(mealPlans.userId, userId), eq(mealPlans.weekStart, week)))
     .limit(1);
 
-  if (!plan) return { week, planId: null, entries: [] };
+  if (!plan) return { week, planId: null, status: "active", entries: [] };
 
   const rows = await db
     .select({
@@ -50,6 +52,7 @@ export async function loadWeek(userId: string, week: string): Promise<WeekView> 
       leftoverId: mealPlanEntries.leftoverId,
       portions: mealPlanEntries.portions,
       status: mealPlanEntries.status,
+      createdBy: mealPlanEntries.createdBy,
       recipeTitle: recipes.title,
       leftoverLabel: leftovers.label,
     })
@@ -62,6 +65,7 @@ export async function loadWeek(userId: string, week: string): Promise<WeekView> 
   return {
     week,
     planId: plan.id,
+    status: plan.status,
     entries: rows.map<PlanEntryView>((row) => ({
       id: row.id,
       day: row.day,
@@ -72,6 +76,7 @@ export async function loadWeek(userId: string, week: string): Promise<WeekView> 
       title: row.recipeTitle ?? row.leftoverLabel ?? "Meal",
       portions: row.portions,
       status: row.status,
+      createdBy: row.createdBy,
     })),
   };
 }

@@ -68,6 +68,7 @@ export default async function WeekPage({ params }: { params: Promise<{ week: str
       <WeekBoard
         week={week}
         days={days}
+        status={view.status}
         entries={view.entries}
         recipes={recipes}
         leftovers={leftovers}

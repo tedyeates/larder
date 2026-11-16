@@ -15,6 +15,13 @@
       "when": 1794780294170,
       "tag": "0001_rapid_black_tarantula",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1794815356975,
+      "tag": "0002_workable_rick_jones",
+      "breakpoints": true
     }
   ]
 }

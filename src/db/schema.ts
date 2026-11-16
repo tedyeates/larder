@@ -209,6 +209,7 @@ export const mealPlanEntries = pgTable(
     leftoverId: uuid("leftover_id").references(() => leftovers.id, { onDelete: "set null" }),
     portions: numeric("portions", { precision: 8, scale: 2, mode: "number" }).notNull().default(1),
     status: planEntryStatus("status").notNull().default("planned"),
+    createdBy: creator("created_by").notNull().default("manual"),
     cookEventId: uuid("cook_event_id").references(() => cookEvents.id, { onDelete: "set null" }),
     sortOrder: integer("sort_order").notNull().default(0),
   },

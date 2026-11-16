@@ -24,15 +24,9 @@ export function RecipeForm({ ingredients }: { ingredients: readonly IngredientOp
   const [steps, setSteps] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const first = ingredients[0];
   const [catalogue, setCatalogue] = useState<IngredientOption[]>([...ingredients]);
   const [lines, setLines] = useState<Line[]>([
-    {
-      key: 1,
-      ingredientId: first?.id ?? "",
-      quantity: "",
-      unit: first ? (siblingUnits(first.stockUnit)[0] ?? "g") : "g",
-    },
+    { key: 1, ingredientId: "", quantity: "", unit: "g" },
   ]);
 
   function updateLine(key: number, patch: Partial<Line>) {
@@ -42,12 +36,7 @@ export function RecipeForm({ ingredients }: { ingredients: readonly IngredientOp
   function addLine() {
     setLines((current) => [
       ...current,
-      {
-        key: nextKey++,
-        ingredientId: first?.id ?? "",
-        quantity: "",
-        unit: first ? (siblingUnits(first.stockUnit)[0] ?? "g") : "g",
-      },
+      { key: nextKey++, ingredientId: "", quantity: "", unit: "g" },
     ]);
   }
 
@@ -180,6 +169,9 @@ export function RecipeForm({ ingredients }: { ingredients: readonly IngredientOp
 
       <label className="block space-y-1 text-sm">
         <span className="font-medium">Steps</span>
+        <span className="block text-xs text-neutral-500">
+          One step per line. Markdown is supported — **bold**, lists, links.
+        </span>
         <textarea
           rows={6}
           value={steps}

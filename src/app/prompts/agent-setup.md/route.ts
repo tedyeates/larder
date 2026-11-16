@@ -63,9 +63,14 @@ get 401, the token is wrong. If you get 503, the server has no token configured.
 - \`search_recipes({ query?, limit? })\`
 - \`get_recipe({ recipe_id })\`
 - \`propose_shopping_list({ week_start? })\`
+- \`create_meal_plan({ week_start, note?, entries[] })\` — saves a **draft**
 
-These are read-only. Cooking, ticking shopping items, and stock adjustments are
-human actions in the app.
+\`create_meal_plan\` is the only write. It stores a draft that the human must
+activate in the Plan tab; until then it affects neither shopping nor cooking.
+An entry with \`kind: "leftover"\` is a planned leftover: it deducts nothing and
+is how you schedule days you intend to eat what you cook.
+
+Cooking, ticking shopping items, and stock adjustments remain human actions.
 
 ## Notes
 

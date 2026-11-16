@@ -30,18 +30,22 @@ export function IngredientPicker({
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>("other");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setQuery(selected?.name ?? "");
   }, [selected?.name]);
 
-  useEffect(
-    () => () => {
-      if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-    },
-    [],
-  );
+  useEffect(() => {
+    function onPointerDown(event: PointerEvent) {
+      const node = event.target as Node | null;
+      if (containerRef.current && node && !containerRef.current.contains(node)) {
+        setOpen(false);
+      }
+    }
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, []);
 
   const needle = query.trim().toLowerCase();
   const matches =
@@ -84,7 +88,7 @@ export function IngredientPicker({
   }
 
   return (
-    <div className="relative">
+    <div ref={containerRef} className="relative">
       <input
         value={query}
         disabled={disabled}
@@ -94,13 +98,7 @@ export function IngredientPicker({
           setCreating(false);
           setError(null);
         }}
-        onFocus={() => {
-          if (closeTimer.current !== null) clearTimeout(closeTimer.current);
-          setOpen(true);
-        }}
-        onBlur={() => {
-          closeTimer.current = setTimeout(() => setOpen(false), 150);
-        }}
+        onFocus={() => setOpen(true)}
         onKeyDown={(event) => {
           if (event.key === "Enter" && open) {
             event.preventDefault();

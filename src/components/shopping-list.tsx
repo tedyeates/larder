@@ -20,12 +20,10 @@ export function ShoppingList({
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  const [ingredientId, setIngredientId] = useState(ingredients[0]?.id ?? "");
+  const [ingredientId, setIngredientId] = useState("");
   const [catalogue, setCatalogue] = useState<IngredientOption[]>([...ingredients]);
   const [quantity, setQuantity] = useState("");
-  const [unit, setUnit] = useState<UnitCode>(
-    ingredients[0] ? (siblingUnits(ingredients[0].stockUnit)[0] ?? "g") : "g",
-  );
+  const [unit, setUnit] = useState<UnitCode>("g");
 
   const selected = catalogue.find((item) => item.id === ingredientId);
   const units = selected ? siblingUnits(selected.stockUnit) : ["g"];

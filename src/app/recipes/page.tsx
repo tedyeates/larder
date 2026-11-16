@@ -47,9 +47,14 @@ export default async function RecipesPage() {
       ) : (
         <ul className="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
           {rows.map((recipe) => (
-            <li key={recipe.id} className="flex items-center justify-between px-4 py-3">
-              <span className="text-sm font-medium">{recipe.title}</span>
-              <span className="text-xs text-neutral-500">{recipe.servings} servings</span>
+            <li key={recipe.id}>
+              <Link
+                href={`/recipes/${recipe.id}`}
+                className="flex items-center justify-between px-4 py-3 hover:bg-neutral-50 dark:hover:bg-neutral-900"
+              >
+                <span className="text-sm font-medium">{recipe.title}</span>
+                <span className="text-xs text-neutral-500">{recipe.servings} servings</span>
+              </Link>
             </li>
           ))}
         </ul>
