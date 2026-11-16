@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { type FormEvent, useState, useTransition } from "react";
+import { type FormEvent, useRef, useState, useTransition } from "react";
 import { createRecipe, updateRecipe } from "@/actions/recipes";
 import { siblingUnits, type UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
@@ -13,8 +13,6 @@ interface Line {
   readonly quantity: string;
   readonly unit: UnitCode;
 }
-
-let nextKey = 2;
 
 export interface RecipeFormInitial {
   readonly recipeId: string;
@@ -60,6 +58,8 @@ export function RecipeForm({
       ? seeded
       : [{ key: 1, ingredientId: "", quantity: "", unit: "g" }];
   });
+  // Start above any seeded key so adding a row can never collide with one.
+  const nextKey = useRef((initial?.lines.length ?? 0) + 2);
 
   function updateLine(key: number, patch: Partial<Line>) {
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -68,7 +68,7 @@ export function RecipeForm({
   function addLine() {
     setLines((current) => [
       ...current,
-      { key: nextKey++, ingredientId: "", quantity: "", unit: "g" },
+      { key: nextKey.current++, ingredientId: "", quantity: "", unit: "g" },
     ]);
   }
 
