@@ -173,7 +173,7 @@ export async function addPlannedLeftover(input: unknown): Promise<PlanActionResu
 
   const planId = await ensurePlan(user.id, parsed.data.week);
 
-  const [source] = await db
+  const cooks = await db
     .select()
     .from(mealPlanEntries)
     .where(
@@ -183,17 +183,22 @@ export async function addPlannedLeftover(input: unknown): Promise<PlanActionResu
         eq(mealPlanEntries.recipeId, recipe.id),
       ),
     )
-    .orderBy(mealPlanEntries.day)
-    .limit(1);
+    .orderBy(mealPlanEntries.day);
 
-  if (!source) {
+  const usable = cooks.filter((cook) => cook.status !== "skipped");
+  if (usable.length === 0) {
     return {
       error: `Add ${recipe.title} as a meal first — leftovers have to come from a cook.`,
     };
   }
-  if (daysBetween(source.day, parsed.data.day) < 0) {
+
+  const firstDay = usable[0]?.day;
+  if (firstDay !== undefined && daysBetween(firstDay, parsed.data.day) < 0) {
     return { error: "Leftovers can't be eaten before the dish is cooked." };
   }
+
+  // One portion of each cook is eaten on the night; the rest can be earmarked.
+  const capacity = usable.reduce((total, cook) => total + Math.max(0, cook.portions - 1), 0);
 
   const existing = await db
     .select()
@@ -212,13 +217,13 @@ export async function addPlannedLeftover(input: unknown): Promise<PlanActionResu
     .filter((row) => !(row.day === parsed.data.day && row.slot === parsed.data.slot))
     .reduce((total, row) => total + row.portions, 0);
 
-  const available = source.portions - alreadyPlanned;
+  const available = capacity - alreadyPlanned;
   if (parsed.data.portions > available) {
     return {
       error:
         available <= 0
-          ? `All ${source.portions} portion(s) of ${recipe.title} are already earmarked.`
-          : `Only ${available} portion(s) left to earmark from ${recipe.title}.`,
+          ? `Nothing spare from ${recipe.title} — one portion of each cook is eaten on the night.`
+          : `Only ${available} portion(s) spare from ${recipe.title}.`,
     };
   }
 
@@ -307,6 +312,31 @@ export async function discardDraft(week: unknown): Promise<PlanActionResult> {
   revalidatePath(`/plan/${parsed.data}`);
   revalidatePath("/plan");
   return { message: "Draft discarded." };
+}
+
+export async function discardLeftover(leftoverId: string): Promise<PlanActionResult> {
+  const user = await context();
+  if (!user) return { error: "You are signed out." };
+  const db = getDb();
+
+  const [batch] = await db
+    .select({ id: leftovers.id, status: leftovers.status })
+    .from(leftovers)
+    .where(and(eq(leftovers.id, leftoverId), eq(leftovers.userId, user.id)))
+    .limit(1);
+  if (!batch) return { error: "That leftover is gone." };
+  if (batch.status !== "available") return { error: "That leftover is already spoken for." };
+
+  const [used] = await db
+    .select({ id: mealPlanEntries.id })
+    .from(mealPlanEntries)
+    .where(and(eq(mealPlanEntries.leftoverId, leftoverId), eq(mealPlanEntries.status, "planned")))
+    .limit(1);
+  if (used) return { error: "Remove the planned meal that uses it first." };
+
+  await db.update(leftovers).set({ status: "discarded" }).where(eq(leftovers.id, leftoverId));
+  revalidatePath("/plan");
+  return { message: "Leftover discarded." };
 }
 
 export async function removePlanEntry(entryId: string): Promise<PlanActionResult> {

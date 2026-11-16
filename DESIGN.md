@@ -144,10 +144,11 @@ first-class records you can slot into any later lunch or dinner.
 - Assigning a leftover to a slot moves it to `reserved`; eating it moves it to `eaten`. Unassigning
   returns it to `available`. Discarding it sets `discarded` and writes nothing to the pantry.
 - Leftovers carry their own best-before (cooked_at + 3 days), independent of the ingredients.
-- A **planned** leftover (no batch yet) must name a cook already on the plan, and the portions
-  earmarked for a dish can never exceed that cook's portions. Cooking attaches the reservations to
-  the new batch and subtracts them from its availability; eating one consumes the reservation, not a
-  second portion. A planned leftover with no batch cannot be eaten.
+- A **planned** leftover (no batch yet) must name a cook already on the plan. One portion of each
+  cook is assumed eaten that night, so a 2-portion dinner offers 1 spare; cooking it twice offers 2.
+  Cooking attaches the reservations to the new batch and subtracts them from its availability;
+  eating one consumes the reservation, not a second portion. A planned leftover with no batch cannot
+  be eaten.
 - Breakfast is deliberately not in the enum yet; adding `breakfast` later is a one-line enum change.
 
 Plans are **drafts until activated**. An agent can create a draft; only the user activates, edits or

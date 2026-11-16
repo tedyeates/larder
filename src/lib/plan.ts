@@ -145,32 +145,41 @@ export interface PlannedCook {
   readonly day: string;
   /** Portions this week intends to cook. */
   readonly portions: number;
+  /** How many cooks are planned; one portion of each is eaten on the night. */
+  readonly cooks: number;
+  /** Portions realistically available to earmark: portions minus one per cook. */
+  readonly capacity: number;
   /** Portions already earmarked as planned leftovers. */
   readonly reserved: number;
 }
 
 /**
  * The cooks on this week's plan, and how much of each is already promised to a
- * future leftover slot. This is what the "from a dish you'll cook" picker uses,
- * so you cannot earmark more than the dish will produce.
+ * future leftover slot. Cooking twice stacks: two two-portion dinners leave two
+ * portions once one is eaten on each night.
  */
 export function derivePlannedCooks(entries: readonly PlanEntryView[]): PlannedCook[] {
   const cooks = new Map<
     string,
-    { recipeId: string; title: string; day: string; portions: number }
+    { recipeId: string; title: string; day: string; portions: number; cooks: number }
   >();
 
   for (const entry of entries) {
     if (entry.kind !== "recipe" || entry.status !== "planned" || entry.recipeId === null) continue;
     const existing = cooks.get(entry.recipeId);
     if (existing) {
-      cooks.set(entry.recipeId, { ...existing, portions: existing.portions + entry.portions });
+      cooks.set(entry.recipeId, {
+        ...existing,
+        portions: existing.portions + entry.portions,
+        cooks: existing.cooks + 1,
+      });
     } else {
       cooks.set(entry.recipeId, {
         recipeId: entry.recipeId,
         title: entry.title,
         day: entry.day,
         portions: entry.portions,
+        cooks: 1,
       });
     }
   }
@@ -190,6 +199,7 @@ export function derivePlannedCooks(entries: readonly PlanEntryView[]): PlannedCo
 
   return [...cooks.values()].map((cook) => ({
     ...cook,
+    capacity: Math.max(0, cook.portions - cook.cooks),
     reserved: reserved.get(cook.recipeId) ?? 0,
   }));
 }

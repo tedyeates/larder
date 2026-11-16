@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { type FormEvent, useState, useTransition } from "react";
-import { createRecipe } from "@/actions/recipes";
+import { createRecipe, updateRecipe } from "@/actions/recipes";
 import { siblingUnits, type UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
 import { IngredientPicker } from "./ingredient-picker";
@@ -16,18 +16,50 @@ interface Line {
 
 let nextKey = 2;
 
-export function RecipeForm({ ingredients }: { ingredients: readonly IngredientOption[] }) {
+export interface RecipeFormInitial {
+  readonly recipeId: string;
+  readonly title: string;
+  readonly servings: number;
+  readonly steps: readonly string[];
+  readonly lines: readonly {
+    ingredientId: string | null;
+    quantity: number | null;
+    unit: string | null;
+  }[];
+}
+
+export function RecipeForm({
+  ingredients,
+  initial,
+}: {
+  ingredients: readonly IngredientOption[];
+  initial?: RecipeFormInitial;
+}) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
-  const [title, setTitle] = useState("");
-  const [servings, setServings] = useState("2");
-  const [steps, setSteps] = useState("");
+  const [title, setTitle] = useState(initial?.title ?? "");
+  const [servings, setServings] = useState(String(initial?.servings ?? 2));
+  const [steps, setSteps] = useState(initial?.steps.join("\n") ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const [catalogue, setCatalogue] = useState<IngredientOption[]>([...ingredients]);
-  const [lines, setLines] = useState<Line[]>([
-    { key: 1, ingredientId: "", quantity: "", unit: "g" },
-  ]);
+  const [lines, setLines] = useState<Line[]>(() => {
+    const seeded = initial?.lines.flatMap((line, index) =>
+      line.ingredientId === null
+        ? []
+        : [
+            {
+              key: index + 1,
+              ingredientId: line.ingredientId,
+              quantity: line.quantity === null ? "" : String(line.quantity),
+              unit: (line.unit ?? "g") as UnitCode,
+            },
+          ],
+    );
+    return seeded && seeded.length > 0
+      ? seeded
+      : [{ key: 1, ingredientId: "", quantity: "", unit: "g" }];
+  });
 
   function updateLine(key: number, patch: Partial<Line>) {
     setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
@@ -62,14 +94,15 @@ export function RecipeForm({ ingredients }: { ingredients: readonly IngredientOp
     formData.set("servings", servings);
     formData.set("steps", steps);
     formData.set("lines", JSON.stringify(payload));
+    if (initial) formData.set("recipeId", initial.recipeId);
 
     startTransition(async () => {
-      const result = await createRecipe(formData);
+      const result = initial ? await updateRecipe(formData) : await createRecipe(formData);
       if (result.error) {
         setError(result.error);
         return;
       }
-      router.push("/recipes");
+      if (result.recipeId) router.push(`/recipes/${result.recipeId}`);
       router.refresh();
     });
   }

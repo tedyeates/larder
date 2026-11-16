@@ -52,7 +52,15 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
       </Link>
 
       <header className="mt-3 mb-6 space-y-2">
-        <h1 className="text-3xl font-semibold tracking-tight text-balance">{recipe.title}</h1>
+        <div className="flex items-start justify-between gap-4">
+          <h1 className="text-3xl font-semibold tracking-tight text-balance">{recipe.title}</h1>
+          <Link
+            href={`/recipes/${recipe.id}/edit`}
+            className="shrink-0 rounded-lg border border-neutral-300 px-3 py-1.5 text-sm text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
+          >
+            Edit
+          </Link>
+        </div>
         <p className="text-sm text-neutral-500">
           {recipe.servings} servings
           {totalMinutes > 0 ? ` · ${totalMinutes} min` : ""}

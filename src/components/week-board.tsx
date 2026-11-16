@@ -9,6 +9,7 @@ import {
   addPlannedLeftover,
   addRecipeToPlan,
   discardDraft,
+  discardLeftover,
   removePlanEntry,
 } from "@/actions/plan";
 import { generateShoppingList } from "@/actions/shop";
@@ -58,14 +59,14 @@ export function WeekBoard({
     }
     if (choice.startsWith("planned:")) {
       const cook = plannedCooks.find((item) => `planned:${item.recipeId}` === choice);
-      return cook ? cook.portions - cook.reserved : 0;
+      return cook ? cook.capacity - cook.reserved : 0;
     }
     return 0;
   }
 
   function defaultChoice(): string {
     if (leftovers[0]) return `batch:${leftovers[0].id}`;
-    const cook = plannedCooks.find((item) => item.portions - item.reserved > 0);
+    const cook = plannedCooks.find((item) => item.capacity - item.reserved > 0);
     return cook ? `planned:${cook.recipeId}` : "";
   }
 
@@ -155,6 +156,14 @@ export function WeekBoard({
     });
   }
 
+  function discardBatch(leftoverId: string) {
+    startTransition(async () => {
+      const result = await discardLeftover(leftoverId);
+      setMessage(result.error ?? result.message ?? null);
+      router.refresh();
+    });
+  }
+
   return (
     <div className="space-y-4">
       {status === "draft" && (
@@ -201,6 +210,35 @@ export function WeekBoard({
 
       {message !== null && (
         <p className="rounded-lg bg-neutral-100 px-3 py-2 text-sm dark:bg-neutral-900">{message}</p>
+      )}
+
+      {leftovers.length > 0 && (
+        <section className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-800">
+          <h2 className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
+            Leftovers waiting
+          </h2>
+          <ul className="mt-2 divide-y divide-neutral-200 dark:divide-neutral-800">
+            {leftovers.map((batch) => (
+              <li key={batch.id} className="flex items-center justify-between gap-3 py-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium">{batch.label}</p>
+                  <p className="text-xs text-neutral-500">
+                    {batch.portions} portion(s)
+                    {batch.bestBefore === null ? "" : ` · use by ${batch.bestBefore}`}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => discardBatch(batch.id)}
+                  disabled={pending}
+                  className="shrink-0 rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-500 disabled:opacity-50 dark:border-neutral-700"
+                >
+                  Discard
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       <div className="space-y-5">
@@ -345,10 +383,10 @@ export function WeekBoard({
                 </label>
               )
             ) : leftovers.length === 0 &&
-              plannedCooks.every((cook) => cook.portions - cook.reserved <= 0) ? (
+              plannedCooks.every((cook) => cook.capacity - cook.reserved <= 0) ? (
               <p className="text-sm text-neutral-500">
-                Nothing to draw on yet. Add the meal first — its leftovers can be scheduled
-                afterwards.
+                Nothing to draw on yet. Add the meal first — one portion is eaten on the night, and
+                the rest can be scheduled.
               </p>
             ) : (
               <label className="block space-y-1 text-sm">
@@ -368,10 +406,10 @@ export function WeekBoard({
                     </optgroup>
                   )}
                   {plannedCooks
-                    .filter((cook) => cook.portions - cook.reserved > 0)
+                    .filter((cook) => cook.capacity - cook.reserved > 0)
                     .map((cook) => (
                       <option key={cook.recipeId} value={`planned:${cook.recipeId}`}>
-                        {cook.title} — {cook.portions - cook.reserved} of {cook.portions} free (
+                        {cook.title} — {cook.capacity - cook.reserved} spare of {cook.portions} (
                         {dayLabel(cook.day)})
                       </option>
                     ))}
