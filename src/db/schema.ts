@@ -161,9 +161,9 @@ export const cookEvents = pgTable(
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
-    recipeId: uuid("recipe_id")
-      .notNull()
-      .references(() => recipes.id, { onDelete: "restrict" }),
+    recipeId: uuid("recipe_id").references(() => recipes.id, { onDelete: "set null" }),
+    /** Kept so cook history still reads correctly after the recipe is deleted. */
+    recipeLabel: text("recipe_label"),
     planEntryId: uuid("plan_entry_id"),
     portionsCooked: numeric("portions_cooked", { precision: 8, scale: 2, mode: "number" })
       .notNull()
@@ -205,7 +205,7 @@ export const mealPlanEntries = pgTable(
     day: date("day", { mode: "string" }).notNull(),
     slot: planSlot("slot").notNull(),
     kind: planEntryKind("kind").notNull().default("recipe"),
-    recipeId: uuid("recipe_id").references(() => recipes.id, { onDelete: "restrict" }),
+    recipeId: uuid("recipe_id").references(() => recipes.id, { onDelete: "set null" }),
     leftoverId: uuid("leftover_id").references(() => leftovers.id, { onDelete: "set null" }),
     portions: numeric("portions", { precision: 8, scale: 2, mode: "number" }).notNull().default(1),
     status: planEntryStatus("status").notNull().default("planned"),

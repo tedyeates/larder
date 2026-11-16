@@ -150,6 +150,7 @@ export async function cookEntry(input: unknown): Promise<CookResult> {
       .values({
         userId: user.id,
         recipeId: recipe.id,
+        recipeLabel: recipe.title,
         planEntryId: entry.id,
         portionsCooked: split.portionsCooked,
         eatenNow: split.eatenNow,

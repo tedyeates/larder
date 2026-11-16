@@ -128,6 +128,10 @@ offer a timer.
 recipe with unmatched lines can still be cooked — it just produces a manual prompt for those lines,
 never a guess.
 
+Deleting a recipe removes its planned entries and detaches cook history: `cook_events.recipe_id`
+becomes null while `cook_events.recipe_label` keeps the dish's name, so the record of what you
+actually cooked survives.
+
 ### Meal plan, cooking and leftovers
 
 | `meal_plan` | user_id, week_start (date), status (`draft`\|`active`\|`archived`), created_by (`manual`\|`agent`), notes |

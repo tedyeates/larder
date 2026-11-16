@@ -38,8 +38,9 @@ export interface DeleteRecipeResult {
 }
 
 /**
- * Delete a recipe, unless the ledger depends on it. Plan entries and cook
- * history stay: removing either would rewrite what actually happened.
+ * Delete a recipe. Current plan entries that reference it are removed; cook
+ * history is kept by detaching the foreign key (the title is stored on the cook
+ * event), so the record of what you cooked survives.
  */
 export async function deleteRecipe(recipeId: string): Promise<DeleteRecipeResult> {
   const parsed = z.uuid().safeParse(recipeId);
@@ -62,26 +63,21 @@ export async function deleteRecipe(recipeId: string): Promise<DeleteRecipeResult
     .limit(1);
   if (!recipe) return { error: "That recipe isn't yours." };
 
-  const [planned] = await db
-    .select({ id: mealPlanEntries.id })
-    .from(mealPlanEntries)
-    .where(eq(mealPlanEntries.recipeId, recipe.id))
-    .limit(1);
-  if (planned) {
-    return { error: "That recipe is on a meal plan. Remove those entries first." };
-  }
+  await db.transaction(async (tx) => {
+    // Clear it from the plan (planned, cooked, or otherwise) — the recipe is gone.
+    await tx.delete(mealPlanEntries).where(eq(mealPlanEntries.recipeId, recipe.id));
 
-  const [cooked] = await db
-    .select({ id: cookEvents.id })
-    .from(cookEvents)
-    .where(eq(cookEvents.recipeId, recipe.id))
-    .limit(1);
-  if (cooked) {
-    return { error: "That recipe is in your cook history, so it has to stay." };
-  }
+    // Detach history, keeping the name that was copied onto the cook event.
+    await tx
+      .update(cookEvents)
+      .set({ recipeId: null, recipeLabel: recipe.title })
+      .where(eq(cookEvents.recipeId, recipe.id));
 
-  await db.delete(recipes).where(eq(recipes.id, recipe.id));
+    await tx.delete(recipes).where(eq(recipes.id, recipe.id));
+  });
+
   revalidatePath("/recipes");
+  revalidatePath("/plan");
   return { deleted: true };
 }
 
