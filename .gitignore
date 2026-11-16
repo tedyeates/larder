@@ -14,6 +14,10 @@ coverage/
 *.tsbuildinfo
 next-env.d.ts
 
+# Project OpenCode config carries the MCP bearer token; keep it local.
+opencode.json
+opencode.jsonc
+
 .DS_Store
 Thumbs.db
 .neon
