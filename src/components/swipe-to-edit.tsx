@@ -21,25 +21,42 @@ export function SwipeToEdit({
   const [dragging, setDragging] = useState(false);
   const start = useRef<{ x: number; base: number } | null>(null);
   const dragged = useRef(false);
+  const capturing = useRef(false);
 
   function down(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
     start.current = { x: event.clientX, base: offset };
     dragged.current = false;
+    capturing.current = false;
     setDragging(true);
-    event.currentTarget.setPointerCapture(event.pointerId);
   }
 
   function move(event: ReactPointerEvent<HTMLDivElement>) {
     if (start.current === null) return;
     const delta = event.clientX - start.current.x;
-    if (Math.abs(delta) > 6) dragged.current = true;
+
+    // Capture only once the gesture is clearly horizontal. Capturing on every
+    // pointer-down retargets the click and stops buttons inside the row from
+    // firing — which is exactly what broke Adjust.
+    if (!capturing.current && Math.abs(delta) > 8) {
+      capturing.current = true;
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    if (!capturing.current) return;
+
+    dragged.current = true;
     setOffset(Math.min(0, Math.max(-ACTION_WIDTH, start.current.base + delta)));
   }
 
-  function up() {
+  function up(event: ReactPointerEvent<HTMLDivElement>) {
     if (start.current === null) return;
-    setOffset(offset < -ACTION_WIDTH / 2 ? -ACTION_WIDTH : 0);
+    if (capturing.current) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+      capturing.current = false;
+    }
+    if (dragged.current) {
+      setOffset(offset < -ACTION_WIDTH / 2 ? -ACTION_WIDTH : 0);
+    }
     start.current = null;
     setDragging(false);
   }
