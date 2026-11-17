@@ -168,7 +168,7 @@ export function PantryTable({
                 {group.rows.map((row) => (
                   <li key={row.id}>
                     <SwipeToEdit onEdit={() => setEditing(row)}>
-                      <div className="flex items-start justify-between gap-3 px-4 py-3">
+                      <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">{row.name}</p>
                           <p className="text-xs text-neutral-500">
@@ -183,25 +183,23 @@ export function PantryTable({
                           </p>
                         </div>
 
-                        <div className="flex shrink-0 items-start gap-2">
-                          <div className="flex flex-col items-end gap-1">
-                            <span className="text-sm tabular-nums">{row.display}</span>
-                            <span
-                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${chipClass(row)}`}
-                            >
-                              {row.status}
+                        <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:flex-nowrap sm:gap-3">
+                          <span className="text-sm tabular-nums">{row.display}</span>
+                          <span
+                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${chipClass(row)}`}
+                          >
+                            {row.status}
+                          </span>
+                          {row.low && row.status !== "Low" && (
+                            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+                              low
                             </span>
-                            {row.low && row.status !== "Low" && (
-                              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
-                                low
-                              </span>
-                            )}
-                          </div>
+                          )}
                           <button
                             type="button"
                             onClick={() => setSelected(row)}
                             aria-label={`Adjust ${row.name}`}
-                            className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-500 hover:text-neutral-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100"
+                            className="ml-auto rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-500 hover:text-neutral-900 sm:ml-0 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100"
                           >
                             Adjust
                           </button>
