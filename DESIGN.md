@@ -269,6 +269,9 @@ The default landing screen. A dense, scannable table, not cards.
   not everything you have never bought), and `All`, plus a text search that matches name and aliases.
 - **Row tap** opens the ingredient sheet: total, history entries newest-first (who, when, why),
   best-before queue, unit hints, `min_stock`, and the Add/Use up/Discard actions.
+- **Edit** changes how the ingredient is counted. Existing ledger rows are converted, not relabelled:
+  mass and volume keep their base units, while counted units are bridged through grams and the
+  change is refused if no weight is supplied.
 - **"What am I running out of"** is the `Low` + `Out` filter, one tap from the table header.
 - Empty state offers "Add your first ingredient" and "Generate list from plan" if a plan exists.
 

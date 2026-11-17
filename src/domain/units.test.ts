@@ -3,6 +3,7 @@ import {
   baseUnitFor,
   ConversionError,
   canConvert,
+  convertBetweenIngredients,
   formatQuantity,
   fromBase,
   type IngredientUnits,
@@ -115,8 +116,48 @@ describe("formatting", () => {
   });
 });
 
-describe("roundAmount", () => {
-  it("removes floating point dust", () => {
+describe("convertBetweenIngredients", () => {
+  const bunches: IngredientUnits = {
+    id: "spring",
+    name: "Spring onion",
+    stockUnit: "bunch",
+    gramsPer: { bunch: 60 },
+  };
+  const each: IngredientUnits = {
+    id: "spring",
+    name: "Spring onion",
+    stockUnit: "each",
+    gramsPer: { bunch: 60, each: 10 },
+  };
+
+  it("leaves mass alone when only the display unit changes", () => {
+    const from: IngredientUnits = { id: "rice", name: "Rice", stockUnit: "kg" };
+    const to: IngredientUnits = { id: "rice", name: "Rice", stockUnit: "g" };
+    expect(convertBetweenIngredients(1500, from, to)).toBe(1500);
+  });
+
+  it("converts counted units through grams", () => {
+    expect(convertBetweenIngredients(2, bunches, each)).toBe(12);
+  });
+
+  it("refuses without a bridge", () => {
+    const noEach: IngredientUnits = { ...each, gramsPer: { bunch: 60 } };
+    expect(() => convertBetweenIngredients(2, bunches, noEach)).toThrow(ConversionError);
+  });
+
+  it("converts mass into count", () => {
+    const onion: IngredientUnits = {
+      id: "onion",
+      name: "Onion",
+      stockUnit: "each",
+      gramsPer: { each: 150 },
+    };
+    const grams: IngredientUnits = { id: "onion", name: "Onion", stockUnit: "g" };
+    expect(convertBetweenIngredients(300, grams, onion)).toBe(2);
+  });
+});
+
+describe("roundAmount", () => {  it("removes floating point dust", () => {
     expect(roundAmount(0.1 + 0.2)).toBe(0.3);
     expect(roundAmount(-0)).toBe(0);
   });

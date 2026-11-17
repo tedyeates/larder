@@ -182,6 +182,38 @@ export function siblingUnits(stockUnit: UnitCode): UnitCode[] {
   return [stockUnit];
 }
 
+/** Grams represented by one base unit, or null when no hint exists. */
+export function baseGramsPerUnit(ingredient: IngredientUnits): number | null {
+  const base = baseUnitFor(ingredient.stockUnit);
+  if (unitFamily(base) === "mass") return 1;
+  const hint = ingredient.gramsPer?.[base];
+  return hint !== undefined && hint > 0 ? hint : null;
+}
+
+/**
+ * Convert an amount between two ingredient configurations whose stock unit is
+ * changing. Mass and volume keep their base units, so those are free; anything
+ * involving count needs a gram weight on both sides.
+ */
+export function convertBetweenIngredients(
+  amount: number,
+  from: IngredientUnits,
+  to: IngredientUnits,
+): number {
+  const fromBase = baseUnitFor(from.stockUnit);
+  const toBase = baseUnitFor(to.stockUnit);
+
+  if (fromBase === toBase) return roundAmount(amount);
+
+  const fromGrams = baseGramsPerUnit(from);
+  const toGrams = baseGramsPerUnit(to);
+  if (fromGrams === null || toGrams === null) {
+    throw new ConversionError(from, fromBase, toBase);
+  }
+
+  return roundAmount((amount * fromGrams) / toGrams);
+}
+
 /** Render an amount stored in base units the way a person would say it. */
 export function formatQuantity(amountInBase: number, ingredient: IngredientUnits): string {
   const base = baseUnitFor(ingredient.stockUnit);

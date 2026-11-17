@@ -4,8 +4,8 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { ingredients } from "@/db/schema";
-import { assertUnitCode, type UnitCode } from "@/domain/units";
+import { ingredients, stockEntries } from "@/db/schema";
+import { assertUnitCode, convertBetweenIngredients, type UnitCode } from "@/domain/units";
 import { auth } from "@/lib/auth/server";
 import { CATEGORIES } from "@/lib/ingredient-options";
 import { slugify } from "@/lib/slug";
@@ -24,6 +24,109 @@ export interface CreatedIngredient {
   readonly stockUnit: UnitCode;
   readonly category: string;
   readonly aliases: string[];
+}
+
+export interface UpdateUnitResult {
+  readonly error?: string;
+  readonly message?: string;
+}
+
+const unitChangeInput = z.object({
+  ingredientId: z.uuid(),
+  stockUnit: z.string().min(1).max(16),
+  /** Grams per one of the new unit, when the units need a bridge. */
+  gramsPerUnit: z.coerce.number().positive().max(100_000).optional(),
+});
+
+/**
+ * Change how an ingredient is counted, converting every existing ledger row so
+ * the stock means the same amount of food afterwards. Cross-family changes need
+ * a gram weight; without one we refuse rather than silently corrupt stock.
+ */
+export async function updateIngredientUnit(raw: unknown): Promise<UpdateUnitResult> {
+  const parsed = unitChangeInput.safeParse(raw);
+  if (!parsed.success) return { error: "Choose a unit first." };
+
+  const { data: session } = await auth.getSession();
+  if (!session?.user) return { error: "You are signed out." };
+
+  const user = await getOrCreateAppUser({
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
+  });
+  const db = getDb();
+
+  const [ingredient] = await db
+    .select()
+    .from(ingredients)
+    .where(and(eq(ingredients.id, parsed.data.ingredientId), eq(ingredients.userId, user.id)))
+    .limit(1);
+  if (!ingredient) return { error: "That ingredient isn't yours." };
+
+  let newUnit: UnitCode;
+  try {
+    newUnit = assertUnitCode(parsed.data.stockUnit);
+  } catch {
+    return { error: `Unknown unit: ${parsed.data.stockUnit}` };
+  }
+
+  const gramsPer: Record<string, number> = { ...(ingredient.gramsPer ?? {}) };
+  if (parsed.data.gramsPerUnit !== undefined) {
+    gramsPer[newUnit] = parsed.data.gramsPerUnit;
+  }
+
+  const from = {
+    id: ingredient.id,
+    name: ingredient.name,
+    stockUnit: ingredient.stockUnit as UnitCode,
+    gramsPer: ingredient.gramsPer ?? undefined,
+  };
+  const to = {
+    id: ingredient.id,
+    name: ingredient.name,
+    stockUnit: newUnit,
+    gramsPer,
+  };
+
+  if (ingredient.stockUnit === newUnit) {
+    await db.update(ingredients).set({ gramsPer }).where(eq(ingredients.id, ingredient.id));
+    revalidatePath("/pantry");
+    return { message: `Updated the conversion for ${ingredient.name}.` };
+  }
+
+  const lots = await db
+    .select({ id: stockEntries.id, quantity: stockEntries.quantity })
+    .from(stockEntries)
+    .where(eq(stockEntries.ingredientId, ingredient.id));
+
+  let conversions: { id: string; quantity: number }[];
+  try {
+    conversions = lots.map((lot) => ({
+      id: lot.id,
+      quantity: convertBetweenIngredients(lot.quantity, from, to),
+    }));
+  } catch {
+    return {
+      error: `I can't convert ${ingredient.stockUnit} to ${newUnit} without a weight. Enter how many grams one ${newUnit} is.`,
+    };
+  }
+
+  await db.transaction(async (tx) => {
+    for (const row of conversions) {
+      await tx
+        .update(stockEntries)
+        .set({ quantity: row.quantity, unitAsEntered: null, quantityAsEntered: null })
+        .where(eq(stockEntries.id, row.id));
+    }
+    await tx
+      .update(ingredients)
+      .set({ stockUnit: newUnit, gramsPer })
+      .where(eq(ingredients.id, ingredient.id));
+  });
+
+  revalidatePath("/pantry");
+  return { message: `${ingredient.name} is now counted in ${newUnit}.` };
 }
 
 export interface CreateIngredientResult {

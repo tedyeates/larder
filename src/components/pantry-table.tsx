@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import type { IngredientOption } from "@/lib/catalogue";
 import type { PantryRow } from "@/lib/pantry";
 import { AddStockSheet } from "./add-stock-sheet";
+import { EditIngredientSheet } from "./edit-ingredient-sheet";
 import { StockSheet } from "./stock-sheet";
 
 const CATEGORY_ORDER = [
@@ -62,6 +63,7 @@ export function PantryTable({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("in-stock");
   const [selected, setSelected] = useState<PantryRow | null>(null);
+  const [editing, setEditing] = useState<PantryRow | null>(null);
   const [adding, setAdding] = useState(false);
 
   const visible = useMemo(() => {
@@ -211,6 +213,14 @@ export function PantryTable({
                       )}
                       <button
                         type="button"
+                        onClick={() => setEditing(row)}
+                        aria-label={`Edit the unit for ${row.name}`}
+                        className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-500 hover:border-neutral-500 hover:text-neutral-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => setSelected(row)}
                         aria-label={`Adjust ${row.name}`}
                         className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-500 hover:text-neutral-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100"
@@ -227,6 +237,9 @@ export function PantryTable({
       )}
 
       {selected !== null && <StockSheet row={selected} onClose={() => setSelected(null)} />}
+      {editing !== null && (
+        <EditIngredientSheet row={editing} onClose={() => setEditing(null)} />
+      )}
       {adding && (
         <AddStockSheet ingredients={ingredients} onClose={() => setAdding(false)} />
       )}
