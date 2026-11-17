@@ -1,7 +1,9 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import type { IngredientOption } from "@/lib/catalogue";
 import type { PantryRow } from "@/lib/pantry";
+import { AddStockSheet } from "./add-stock-sheet";
 import { StockSheet } from "./stock-sheet";
 
 const CATEGORY_ORDER = [
@@ -48,10 +50,17 @@ function matchesFilter(row: PantryRow, filter: Filter): boolean {
   return row.onHand <= 0 || row.status === "Low" || row.useSoon || row.expired;
 }
 
-export function PantryTable({ rows }: { rows: readonly PantryRow[] }) {
+export function PantryTable({
+  rows,
+  ingredients,
+}: {
+  rows: readonly PantryRow[];
+  ingredients: readonly IngredientOption[];
+}) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<Filter>("in-stock");
   const [selected, setSelected] = useState<PantryRow | null>(null);
+  const [adding, setAdding] = useState(false);
 
   const visible = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -83,14 +92,23 @@ export function PantryTable({ rows }: { rows: readonly PantryRow[] }) {
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          placeholder="Search ingredients"
-          aria-label="Search ingredients"
-          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900 sm:max-w-xs dark:border-neutral-700 dark:bg-neutral-900 dark:focus:border-neutral-100"
-        />
+        <div className="flex flex-1 items-center gap-2">
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search ingredients"
+            aria-label="Search ingredients"
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm outline-none focus:border-neutral-900 sm:max-w-xs dark:border-neutral-700 dark:bg-neutral-900 dark:focus:border-neutral-100"
+          />
+          <button
+            type="button"
+            onClick={() => setAdding(true)}
+            className="shrink-0 rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white dark:bg-white dark:text-neutral-900"
+          >
+            + Add item
+          </button>
+        </div>
 
         <div
           className="flex gap-1 rounded-lg bg-neutral-100 p-1 dark:bg-neutral-900"
@@ -133,13 +151,22 @@ export function PantryTable({ rows }: { rows: readonly PantryRow[] }) {
               : "Nothing matches. Clear the search or switch filters."}
           </p>
           {filter === "in-stock" && (
-            <button
-              type="button"
-              onClick={() => setFilter("all")}
-              className="mt-3 text-sm text-neutral-600 underline underline-offset-4 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
-            >
-              Show all {rows.length} ingredients
-            </button>
+            <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+              <button
+                type="button"
+                onClick={() => setAdding(true)}
+                className="rounded-lg bg-neutral-900 px-3 py-2 text-sm font-medium text-white dark:bg-white dark:text-neutral-900"
+              >
+                + Add an item
+              </button>
+              <button
+                type="button"
+                onClick={() => setFilter("all")}
+                className="text-sm text-neutral-600 underline underline-offset-4 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100"
+              >
+                Show all {rows.length} ingredients
+              </button>
+            </div>
           )}
         </div>
       ) : (
@@ -190,6 +217,9 @@ export function PantryTable({ rows }: { rows: readonly PantryRow[] }) {
       )}
 
       {selected !== null && <StockSheet row={selected} onClose={() => setSelected(null)} />}
+      {adding && (
+        <AddStockSheet ingredients={ingredients} onClose={() => setAdding(false)} />
+      )}
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { AppNav } from "@/components/app-nav";
 import { PantryTable } from "@/components/pantry-table";
 import { auth } from "@/lib/auth/server";
+import { listIngredientOptions } from "@/lib/catalogue";
 import { getPantryRows } from "@/lib/pantry";
 import { getOrCreateAppUser } from "@/lib/users";
 import { SignOutButton } from "./sign-out-button";
@@ -19,7 +20,10 @@ export default async function PantryPage() {
     name: session.user.name,
   });
 
-  const rows = await getPantryRows(appUser.id);
+  const [rows, ingredients] = await Promise.all([
+    getPantryRows(appUser.id),
+    listIngredientOptions(appUser.id),
+  ]);
 
   return (
     <main className="mx-auto max-w-3xl px-5 pt-8 pb-28 sm:px-6 sm:pt-10">
@@ -39,7 +43,7 @@ export default async function PantryPage() {
         </div>
       </header>
 
-      <PantryTable rows={rows} />
+      <PantryTable rows={rows} ingredients={ingredients} />
 
       <AppNav />
     </main>
