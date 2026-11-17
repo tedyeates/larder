@@ -1,12 +1,13 @@
 "use client";
 
+import { Cog, Pencil } from "lucide-react";
 import { useMemo, useState } from "react";
 import type { IngredientOption } from "@/lib/catalogue";
 import type { PantryRow } from "@/lib/pantry";
 import { AddStockSheet } from "./add-stock-sheet";
 import { EditIngredientSheet } from "./edit-ingredient-sheet";
 import { StockSheet } from "./stock-sheet";
-import { SwipeToEdit } from "./swipe-to-edit";
+import { SwipeActions } from "./swipe-actions";
 
 type Filter = "in-stock" | "attention" | "all";
 
@@ -167,7 +168,23 @@ export function PantryTable({
               <ul className="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
                 {group.rows.map((row) => (
                   <li key={row.id}>
-                    <SwipeToEdit onEdit={() => setEditing(row)}>
+                    <SwipeActions
+                      actions={[
+                        {
+                          key: "adjust",
+                          label: "Adjust",
+                          icon: <Pencil size={15} />,
+                          onClick: () => setSelected(row),
+                          tone: "primary",
+                        },
+                        {
+                          key: "edit",
+                          label: "Edit",
+                          icon: <Cog size={15} />,
+                          onClick: () => setEditing(row),
+                        },
+                      ]}
+                    >
                       <div className="flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-medium">{row.name}</p>
@@ -195,17 +212,9 @@ export function PantryTable({
                               low
                             </span>
                           )}
-                          <button
-                            type="button"
-                            onClick={() => setSelected(row)}
-                            aria-label={`Adjust ${row.name}`}
-                            className="ml-auto rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-500 hover:text-neutral-900 sm:ml-0 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100"
-                          >
-                            Adjust
-                          </button>
                         </div>
                       </div>
-                    </SwipeToEdit>
+                    </SwipeActions>
                   </li>
                 ))}
               </ul>

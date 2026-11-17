@@ -1,22 +1,31 @@
 "use client";
 
-import type { ReactNode } from "react";
-import { type PointerEvent as ReactPointerEvent, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
+import { useRef, useState } from "react";
 
-const ACTION_WIDTH = 88;
+const ACTION_WIDTH = 72;
+
+export interface SwipeAction {
+  readonly key: string;
+  readonly label: string;
+  readonly icon: ReactNode;
+  readonly onClick: () => void;
+  readonly tone?: "primary" | "secondary";
+}
 
 /**
- * Swipe a row left to reveal a single action. Works with touch and mouse, keeps
- * the action button in the DOM for keyboard users, and suppresses the click that
- * would otherwise fire at the end of a drag.
+ * Swipe a row left to reveal its actions, TickTick style. Works with touch and
+ * mouse, keeps the buttons in the DOM for keyboard users, and only captures the
+ * pointer once the gesture is clearly horizontal so taps still click normally.
  */
-export function SwipeToEdit({
-  onEdit,
+export function SwipeActions({
+  actions,
   children,
 }: {
-  onEdit: () => void;
+  actions: readonly SwipeAction[];
   children: ReactNode;
 }) {
+  const panelWidth = actions.length * ACTION_WIDTH;
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
   const start = useRef<{ x: number; base: number } | null>(null);
@@ -35,9 +44,6 @@ export function SwipeToEdit({
     if (start.current === null) return;
     const delta = event.clientX - start.current.x;
 
-    // Capture only once the gesture is clearly horizontal. Capturing on every
-    // pointer-down retargets the click and stops buttons inside the row from
-    // firing — which is exactly what broke Adjust.
     if (!capturing.current && Math.abs(delta) > 8) {
       capturing.current = true;
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -45,7 +51,7 @@ export function SwipeToEdit({
     if (!capturing.current) return;
 
     dragged.current = true;
-    setOffset(Math.min(0, Math.max(-ACTION_WIDTH, start.current.base + delta)));
+    setOffset(Math.min(0, Math.max(-panelWidth, start.current.base + delta)));
   }
 
   function up(event: ReactPointerEvent<HTMLDivElement>) {
@@ -55,7 +61,7 @@ export function SwipeToEdit({
       capturing.current = false;
     }
     if (dragged.current) {
-      setOffset(offset < -ACTION_WIDTH / 2 ? -ACTION_WIDTH : 0);
+      setOffset(offset < -panelWidth / 2 ? -panelWidth : 0);
     }
     start.current = null;
     setDragging(false);
@@ -65,20 +71,28 @@ export function SwipeToEdit({
     <div className="relative overflow-hidden">
       <div
         className="absolute inset-y-0 right-0 flex"
-        style={{ width: ACTION_WIDTH }}
+        style={{ width: panelWidth }}
         aria-hidden={offset === 0}
       >
-        <button
-          type="button"
-          tabIndex={offset === 0 ? -1 : 0}
-          onClick={() => {
-            setOffset(0);
-            onEdit();
-          }}
-          className="h-full w-full bg-neutral-900 text-xs font-medium text-white dark:bg-white dark:text-neutral-900"
-        >
-          Edit
-        </button>
+        {actions.map((action) => (
+          <button
+            key={action.key}
+            type="button"
+            tabIndex={offset === 0 ? -1 : 0}
+            onClick={() => {
+              setOffset(0);
+              action.onClick();
+            }}
+            className={`flex w-full flex-col items-center justify-center gap-1 text-[10px] font-medium ${
+              action.tone === "primary"
+                ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900"
+                : "bg-neutral-200 text-neutral-800 dark:bg-neutral-800 dark:text-neutral-100"
+            }`}
+          >
+            {action.icon}
+            {action.label}
+          </button>
+        ))}
       </div>
 
       <div
@@ -95,6 +109,12 @@ export function SwipeToEdit({
           if (dragged.current) {
             event.preventDefault();
             event.stopPropagation();
+            return;
+          }
+          if (offset !== 0) {
+            event.preventDefault();
+            event.stopPropagation();
+            setOffset(0);
           }
         }}
       >
