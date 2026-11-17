@@ -5,6 +5,7 @@ import { createIngredient } from "@/actions/ingredients";
 import type { UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
 import { CREATE_UNITS } from "@/lib/ingredient-options";
+import { CategoryPicker } from "./category-picker";
 
 /**
  * Searchable ingredient picker with inline creation. Typing filters by name
@@ -168,23 +169,16 @@ export function IngredientPicker({
                     ))}
                   </select>
                 </label>
-                <label className="space-y-1 text-xs">
+                <div className="space-y-1 text-xs">
                   <span className="text-neutral-500">Category</span>
-                  <input
+                  <CategoryPicker
+                    options={[...new Set(options.map((option) => option.category))].sort((a, b) =>
+                      a.localeCompare(b),
+                    )}
                     value={category}
-                    onChange={(event) => setCategory(event.target.value)}
-                    list="larder-categories"
-                    placeholder="Category"
-                    className="w-full rounded-md border border-neutral-300 px-2 py-1.5 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                    onChange={setCategory}
                   />
-                  <datalist id="larder-categories">
-                    {[...new Set(options.map((option) => option.category))]
-                      .sort((a, b) => a.localeCompare(b))
-                      .map((option) => (
-                        <option key={option} value={option} />
-                      ))}
-                  </datalist>
-                </label>
+                </div>
               </div>
               {error !== null && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
               <button

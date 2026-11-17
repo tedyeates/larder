@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { updateIngredientCategory, updateIngredientUnit } from "@/actions/ingredients";
 import { type UnitCode, siblingUnits } from "@/domain/units";
 import type { PantryRow } from "@/lib/pantry";
+import { CategoryPicker } from "./category-picker";
 
 const UNIT_OPTIONS: readonly UnitCode[] = [
   "g",
@@ -97,24 +98,13 @@ export function EditIngredientSheet({
           </button>
         </div>
 
-        <label className="block space-y-1 text-sm">
+        <div className="block space-y-1 text-sm">
           <span className="font-medium">Category</span>
-          <input
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
-            list="edit-ingredient-categories"
-            placeholder="Category"
-            className="w-full rounded-lg border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
-          />
-          <datalist id="edit-ingredient-categories">
-            {categories.map((option) => (
-              <option key={option} value={option} />
-            ))}
-          </datalist>
+          <CategoryPicker options={categories} value={category} onChange={setCategory} />
           <span className="block text-xs text-neutral-500">
             Type a new name to create a category.
           </span>
-        </label>
+        </div>
 
         <label className="block space-y-1 text-sm">
           <span className="font-medium">Count it in</span>
