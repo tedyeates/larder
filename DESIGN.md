@@ -265,8 +265,8 @@ The default landing screen. A dense, scannable table, not cards.
 - **Without an active plan, only `min_stock` can raise `Low`** — the plan-aware half needs a plan to
   compare against. This is why the minimum is optional rather than required: it's the fallback, not
   the primary signal.
-- **Filters:** `In stock` (default), `Running out` (zero, low, or turning), and `All`, plus a text
-  search that matches name and aliases.
+- **Filters:** `In stock` (default), `Running out` (low now, turning, or ran out in the last week —
+  not everything you have never bought), and `All`, plus a text search that matches name and aliases.
 - **Row tap** opens the ingredient sheet: total, history entries newest-first (who, when, why),
   best-before queue, unit hints, `min_stock`, and the Add/Use up/Discard actions.
 - **"What am I running out of"** is the `Low` + `Out` filter, one tap from the table header.

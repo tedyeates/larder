@@ -4,6 +4,7 @@ import {
   balance,
   earliestBestBefore,
   expiryState,
+  lastRanOutAt,
   planDeduction,
   remainingLots,
   type StockEntry,
@@ -150,8 +151,56 @@ describe("planDeduction", () => {
   });
 });
 
-describe("dates", () => {
-  it("adds days across month and year boundaries", () => {
+describe("lastRanOutAt", () => {
+  it("is null for an ingredient never stocked", () => {
+    expect(lastRanOutAt([])).toBeNull();
+  });
+
+  it("returns the day the last stock was used", () => {
+    const entries = [
+      entry({ id: "buy", quantity: 500, acquiredAt: "2026-11-01" }),
+      entry({ id: "use", quantity: -500, acquiredAt: "2026-11-12", reason: "cook" }),
+    ];
+    expect(lastRanOutAt(entries)).toBe("2026-11-12");
+  });
+
+  it("is null while stock remains", () => {
+    const entries = [
+      entry({ id: "buy", quantity: 500 }),
+      entry({ id: "use", quantity: -200, reason: "cook" }),
+    ];
+    expect(lastRanOutAt(entries)).toBeNull();
+  });
+
+  it("is null after a restock", () => {
+    const entries = [
+      entry({ id: "buy", quantity: 500, acquiredAt: "2026-11-01" }),
+      entry({ id: "use", quantity: -500, acquiredAt: "2026-11-02", reason: "cook" }),
+      entry({ id: "buy2", quantity: 300, acquiredAt: "2026-11-10" }),
+    ];
+    expect(lastRanOutAt(entries)).toBeNull();
+  });
+
+  it("reports the latest crossing when it ran out twice", () => {
+    const entries = [
+      entry({ id: "b1", quantity: 100, acquiredAt: "2026-11-01" }),
+      entry({ id: "u1", quantity: -100, acquiredAt: "2026-11-02", reason: "cook" }),
+      entry({ id: "b2", quantity: 100, acquiredAt: "2026-11-08" }),
+      entry({ id: "u2", quantity: -100, acquiredAt: "2026-11-14", reason: "cook" }),
+    ];
+    expect(lastRanOutAt(entries)).toBe("2026-11-14");
+  });
+
+  it("counts a discard to zero", () => {
+    const entries = [
+      entry({ id: "buy", quantity: 200, acquiredAt: "2026-11-05" }),
+      entry({ id: "bin", quantity: -200, acquiredAt: "2026-11-09", reason: "discard" }),
+    ];
+    expect(lastRanOutAt(entries)).toBe("2026-11-09");
+  });
+});
+
+describe("dates", () => {  it("adds days across month and year boundaries", () => {
     expect(addDays("2026-11-28", 5)).toBe("2026-12-03");
     expect(addDays("2026-12-31", 1)).toBe("2027-01-01");
   });

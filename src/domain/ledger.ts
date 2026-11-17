@@ -159,3 +159,30 @@ export function totalConsumed(entries: readonly StockEntry[]): number {
     entries.reduce((total, entry) => (entry.quantity < 0 ? total - entry.quantity : total), 0),
   );
 }
+
+/**
+ * When the ingredient last crossed from having stock to having none. Null when
+ * it never ran out, or when it has stock now. Used to distinguish "I used the
+ * last of this on Tuesday" from "I have never bought this".
+ */
+export function lastRanOutAt(entries: readonly StockEntry[], today?: string): string | null {
+  const sorted = [...entries].sort((a, b) => {
+    const byDate = compareIsoDates(a.acquiredAt, b.acquiredAt);
+    return byDate !== 0 ? byDate : a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+
+  let running = 0;
+  let lastCrossing: string | null = null;
+
+  for (const entry of sorted) {
+    const next = roundAmount(running + entry.quantity);
+    if (running > 0 && next <= 0) lastCrossing = entry.acquiredAt;
+    running = next;
+  }
+
+  if (running > 0) return null;
+  if (today !== undefined && lastCrossing !== null && compareIsoDates(lastCrossing, today) > 0) {
+    return null;
+  }
+  return lastCrossing;
+}

@@ -1,8 +1,8 @@
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { ingredients, stockEntries } from "@/db/schema";
-import { todayIso } from "@/domain/dates";
-import type { StockEntry } from "@/domain/ledger";
+import { daysBetween, todayIso } from "@/domain/dates";
+import { type StockEntry, lastRanOutAt } from "@/domain/ledger";
 import { pantryStatus, statusLabel, statusRank } from "@/domain/status";
 import { formatQuantity, type UnitCode } from "@/domain/units";
 
@@ -21,6 +21,11 @@ export interface PantryRow {
   readonly earliestBestBefore: string | null;
   readonly useBy: string | null;
   readonly daysUntilExpiry: number | null;
+  /** Date the ingredient last hit zero, if it has none now. */
+  readonly ranOutAt: string | null;
+  readonly ranOutLabel: string | null;
+  /** True when it hit zero within the last week. */
+  readonly recentlyRanOut: boolean;
   readonly status: PantryStatusLabel;
   readonly rank: number;
   readonly low: boolean;
@@ -70,15 +75,19 @@ export async function getPantryRows(
     });
 
     // Anchored to UTC so a date never shifts by a day on the server.
-    const useBy =
-      status.earliestBestBefore === null
-        ? null
-        : new Date(`${status.earliestBestBefore}T00:00:00Z`).toLocaleDateString("en-GB", {
-            weekday: "short",
-            day: "numeric",
-            month: "short",
-            timeZone: "UTC",
-          });
+    const formatDay = (iso: string) =>
+      new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        timeZone: "UTC",
+      });
+
+    const useBy = status.earliestBestBefore === null ? null : formatDay(status.earliestBestBefore);
+
+    const ranOutAt = status.onHand <= 0 ? lastRanOutAt(lots) : null;
+    const ranOutLabel = ranOutAt === null ? null : formatDay(ranOutAt);
+    const recentlyRanOut = ranOutAt !== null && daysBetween(ranOutAt, today) <= 7;
 
     return {
       id: item.id,
@@ -95,6 +104,9 @@ export async function getPantryRows(
       earliestBestBefore: status.earliestBestBefore,
       useBy,
       daysUntilExpiry: status.daysUntilExpiry,
+      ranOutAt,
+      ranOutLabel,
+      recentlyRanOut,
       status: statusLabel(status),
       rank: statusRank(status),
       low: status.low,

@@ -47,7 +47,9 @@ function matchesFilter(row: PantryRow, filter: Filter): boolean {
   if (filter === "all") return true;
   // The pantry is stock, not catalogue: zero-quantity rows are opt-in.
   if (filter === "in-stock") return row.onHand > 0;
-  return row.onHand <= 0 || row.status === "Low" || row.useSoon || row.expired;
+  // "Running out" means low now, or ran out recently — not everything you have
+  // never bought.
+  return row.status === "Low" || row.useSoon || row.expired || row.recentlyRanOut;
 }
 
 export function PantryTable({
@@ -86,7 +88,7 @@ export function PantryTable({
 
   const inStock = rows.filter((row) => row.onHand > 0).length;
   const attention = rows.filter(
-    (row) => row.onHand <= 0 || row.status === "Low" || row.useSoon || row.expired,
+    (row) => row.status === "Low" || row.useSoon || row.expired || row.recentlyRanOut,
   ).length;
 
   return (
@@ -148,7 +150,9 @@ export function PantryTable({
           <p className="text-sm text-neutral-500">
             {filter === "in-stock" && query.trim() === ""
               ? "Nothing in the pantry yet."
-              : "Nothing matches. Clear the search or switch filters."}
+              : filter === "attention" && query.trim() === ""
+                ? "Nothing is running low or ran out this week."
+                : "Nothing matches. Clear the search or switch filters."}
           </p>
           {filter === "in-stock" && (
             <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
@@ -182,7 +186,13 @@ export function PantryTable({
                     <div className="min-w-0">
                       <p className="truncate text-sm font-medium">{row.name}</p>
                       <p className="text-xs text-neutral-500">
-                        {row.useBy === null ? "No use-by" : `Use by ${row.useBy}`}
+                        {row.onHand <= 0
+                          ? row.ranOutLabel === null
+                            ? "Not in stock"
+                            : `Ran out ${row.ranOutLabel}`
+                          : row.useBy === null
+                            ? "No use-by"
+                            : `Use by ${row.useBy}`}
                         {row.expired ? " · expired" : ""}
                       </p>
                     </div>
