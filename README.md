@@ -49,6 +49,12 @@ corepack pnpm db:migrate  # needs DATABASE_URL_UNPOOLED
 corepack pnpm db:seed     # needs DATABASE_URL
 ```
 
+## Deployment
+
+See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for the full Neon + Vercel setup: two connection
+strings, auth bootstrap, environment variables, the MCP check, preview branches and a
+post-deploy checklist.
+
 ## Agents
 
 Larder exposes a **read-only** MCP server at `/api/mcp`, authenticated with a single bearer token
