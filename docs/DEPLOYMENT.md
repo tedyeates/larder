@@ -3,8 +3,8 @@
 Neon for Postgres and auth, Vercel for the app. This is the path that has actually been run in this
 repo, including the traps.
 
-- **Neon region:** `aws-eu-central-1` (Frankfurt) — London wasn't offered on this account.
-- **Vercel region:** `fra1`, to match. A mismatch adds ~90 ms to every query.
+- **Neon region:** `aws-eu-west-2` (London).
+- **Vercel region:** `lhr1`, to match. A mismatch adds ~90 ms to every query.
 - **Runtime:** Node functions, not Edge. The `pg` pool needs it.
 - **Sign-up:** disabled on the auth branch; one account, created once.
 
@@ -15,9 +15,12 @@ repo, including the traps.
 If you already have the project (`noisy-sea-25551885`, branch `production`), skip to step 2.
 
 ```bash
-neon projects create --name larder --region-id aws-eu-central-1
+neon projects create --name larder --region-id aws-eu-west-2
 neon link --project-id <project-id>
 ```
+
+If your CLI's region list doesn't show `aws-eu-west-2`, create the project from the console and
+choose **London**; then `neon link` it. The CLI help has lagged behind the available regions.
 
 `neon link` writes `.neon`, which pins the project and branch for every later command. It is
 gitignored because it is machine-specific.
@@ -110,7 +113,7 @@ orphaned. There is no UI to create a second account; that's intentional.
 2. **Vercel → Add New → Project → Import**.
 3. Framework preset: **Next.js**. Root directory: repo root. Build: `pnpm build` (auto-detected
    from `packageManager`).
-4. **Settings → Functions → Region: Frankfurt (`fra1`)**.
+4. **Settings → Functions → Region: London (`lhr1`)**.
 5. Node version: **24.x** if offered; the app is developed on Node 24.
 
 ### Environment variables
