@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
-import { ingredients, stockEntries } from "@/db/schema";
+import { categories, ingredients, stockEntries } from "@/db/schema";
 import { daysBetween, todayIso } from "@/domain/dates";
 import { type StockEntry, lastRanOutAt } from "@/domain/ledger";
 import { pantryStatus, statusLabel, statusRank } from "@/domain/status";
@@ -12,6 +12,8 @@ export interface PantryRow {
   readonly id: string;
   readonly name: string;
   readonly category: string;
+  readonly categoryId: string;
+  readonly categorySortOrder: number;
   /** Base units, for sorting. */
   readonly onHand: number;
   /** Human string, e.g. "1.2 kg". */
@@ -37,18 +39,25 @@ export interface PantryRow {
  * One row per ingredient. Quantities come from the ledger; dates come from the
  * lots that still hold stock. Nothing is cached in a column.
  */
-export async function getPantryRows(
-  userId: string,
-  today: string = todayIso(),
-): Promise<PantryRow[]> {
+export async function getPantryRows(userId: string, today: string = todayIso()): Promise<PantryRow[]> {
   const db = getDb();
 
   const [catalogue, entries] = await Promise.all([
     db
-      .select()
+      .select({
+        id: ingredients.id,
+        name: ingredients.name,
+        category: categories.name,
+        categoryId: ingredients.categoryId,
+        categorySortOrder: categories.sortOrder,
+        stockUnit: ingredients.stockUnit,
+        gramsPer: ingredients.gramsPer,
+        minStock: ingredients.minStock,
+      })
       .from(ingredients)
+      .innerJoin(categories, eq(ingredients.categoryId, categories.id))
       .where(eq(ingredients.userId, userId))
-      .orderBy(asc(ingredients.name)),
+      .orderBy(asc(categories.sortOrder), asc(ingredients.name)),
     db.select().from(stockEntries).where(eq(stockEntries.userId, userId)),
   ]);
 
@@ -93,6 +102,8 @@ export async function getPantryRows(
       id: item.id,
       name: item.name,
       category: item.category,
+      categoryId: item.categoryId,
+      categorySortOrder: item.categorySortOrder,
       onHand: status.onHand,
       display: formatQuantity(status.onHand, {
         id: item.id,

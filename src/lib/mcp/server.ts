@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
 import {
+  categories,
   ingredients,
   mealPlanEntries,
   mealPlans,
@@ -15,7 +16,7 @@ import { daysBetween } from "@/domain/dates";
 import { balance } from "@/domain/ledger";
 import { diffAgainstPantry, planRequirements } from "@/domain/plan";
 import { assertUnitCode, isUnitCode, toBase, type UnitCode } from "@/domain/units";
-import { CATEGORIES } from "@/lib/ingredient-options";
+import { ensureCategory } from "@/lib/categories";
 import { getPantryRows } from "@/lib/pantry";
 import { currentWeek, ensurePlan, listLeftovers, loadWeek } from "@/lib/plan";
 import { slugify } from "@/lib/slug";
@@ -330,10 +331,11 @@ export function buildLarderServer(userId: string): McpServer {
           id: ingredients.id,
           name: ingredients.name,
           stockUnit: ingredients.stockUnit,
-          category: ingredients.category,
+          category: categories.name,
           aliases: ingredients.aliases,
         })
         .from(ingredients)
+        .innerJoin(categories, eq(ingredients.categoryId, categories.id))
         .where(eq(ingredients.userId, userId));
 
       const needle = query?.trim().toLowerCase();
@@ -366,7 +368,12 @@ export function buildLarderServer(userId: string): McpServer {
       inputSchema: {
         name: z.string().min(1).max(80),
         stock_unit: z.string().min(1).max(16),
-        category: z.enum(CATEGORIES).optional(),
+        category: z
+          .string()
+          .min(1)
+          .max(40)
+          .optional()
+          .describe("Category name; created if it does not exist yet"),
         grams_per_unit: z
           .number()
           .positive()
@@ -388,8 +395,14 @@ export function buildLarderServer(userId: string): McpServer {
 
       const db = getDb();
       const [existing] = await db
-        .select()
+        .select({
+          id: ingredients.id,
+          name: ingredients.name,
+          stockUnit: ingredients.stockUnit,
+          category: categories.name,
+        })
         .from(ingredients)
+        .innerJoin(categories, eq(ingredients.categoryId, categories.id))
         .where(and(eq(ingredients.userId, userId), eq(ingredients.slug, slug)))
         .limit(1);
       if (existing) {
@@ -402,18 +415,18 @@ export function buildLarderServer(userId: string): McpServer {
         });
       }
 
-      const chosen = category ?? "other";
+      const chosen = await ensureCategory(userId, category ?? "Other");
       const [created] = await db
         .insert(ingredients)
         .values({
           userId,
           name: name.trim(),
           slug,
-          category: chosen,
+          categoryId: chosen.id,
           stockUnit: unit,
           gramsPer: grams_per_unit !== undefined ? { each: grams_per_unit } : null,
           shelfLifeDays:
-            chosen === "frozen" ? 180 : chosen === "dry" || chosen === "tins" ? 730 : 7,
+            chosen.slug === "frozen" ? 180 : chosen.slug === "dry" || chosen.slug === "tins" ? 730 : 7,
         })
         .returning();
 
@@ -423,7 +436,7 @@ export function buildLarderServer(userId: string): McpServer {
         id: created.id,
         name: created.name,
         stock_unit: created.stockUnit,
-        category: created.category,
+        category: chosen.name,
         existed: false,
       });
     },

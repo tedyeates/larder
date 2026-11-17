@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { updateIngredientUnit } from "@/actions/ingredients";
+import { updateIngredientCategory, updateIngredientUnit } from "@/actions/ingredients";
 import { type UnitCode, siblingUnits } from "@/domain/units";
 import type { PantryRow } from "@/lib/pantry";
 
@@ -25,13 +25,16 @@ const UNIT_OPTIONS: readonly UnitCode[] = [
 
 export function EditIngredientSheet({
   row,
+  categories,
   onClose,
 }: {
   row: PantryRow;
+  categories: readonly string[];
   onClose: () => void;
 }) {
   const router = useRouter();
   const [unit, setUnit] = useState<UnitCode>(row.stockUnit);
+  const [category, setCategory] = useState(row.category);
   const [grams, setGrams] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -42,15 +45,29 @@ export function EditIngredientSheet({
   function save() {
     setError(null);
     startTransition(async () => {
-      const result = await updateIngredientUnit({
-        ingredientId: row.id,
-        stockUnit: unit,
-        gramsPerUnit: grams.trim() === "" ? undefined : Number(grams),
-      });
-      if (result.error) {
-        setError(result.error);
-        return;
+      if (category.trim() !== "" && category.trim() !== row.category) {
+        const moved = await updateIngredientCategory({
+          ingredientId: row.id,
+          category: category.trim(),
+        });
+        if (moved.error) {
+          setError(moved.error);
+          return;
+        }
       }
+
+      if (changing || grams.trim() !== "") {
+        const result = await updateIngredientUnit({
+          ingredientId: row.id,
+          stockUnit: unit,
+          gramsPerUnit: grams.trim() === "" ? undefined : Number(grams),
+        });
+        if (result.error) {
+          setError(result.error);
+          return;
+        }
+      }
+
       router.refresh();
       onClose();
     });
@@ -79,6 +96,25 @@ export function EditIngredientSheet({
             Close
           </button>
         </div>
+
+        <label className="block space-y-1 text-sm">
+          <span className="font-medium">Category</span>
+          <input
+            value={category}
+            onChange={(event) => setCategory(event.target.value)}
+            list="edit-ingredient-categories"
+            placeholder="Category"
+            className="w-full rounded-lg border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
+          />
+          <datalist id="edit-ingredient-categories">
+            {categories.map((option) => (
+              <option key={option} value={option} />
+            ))}
+          </datalist>
+          <span className="block text-xs text-neutral-500">
+            Type a new name to create a category.
+          </span>
+        </label>
 
         <label className="block space-y-1 text-sm">
           <span className="font-medium">Count it in</span>

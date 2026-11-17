@@ -4,16 +4,16 @@ import { and, eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
-import { ingredients, stockEntries } from "@/db/schema";
+import { categories, ingredients, stockEntries } from "@/db/schema";
 import { assertUnitCode, convertBetweenIngredients, type UnitCode } from "@/domain/units";
 import { auth } from "@/lib/auth/server";
-import { CATEGORIES } from "@/lib/ingredient-options";
+import { ensureCategory } from "@/lib/categories";
 import { slugify } from "@/lib/slug";
 import { getOrCreateAppUser } from "@/lib/users";
 
 const input = z.object({
   name: z.string().trim().min(1).max(80),
-  category: z.enum(CATEGORIES).default("other"),
+  category: z.string().trim().min(1).max(40).default("Other"),
   stockUnit: z.string().min(1).max(16),
   gramsPerUnit: z.coerce.number().positive().max(100_000).optional(),
 });
@@ -23,6 +23,7 @@ export interface CreatedIngredient {
   readonly name: string;
   readonly stockUnit: UnitCode;
   readonly category: string;
+  readonly categoryId: string;
   readonly aliases: string[];
 }
 
@@ -31,8 +32,49 @@ export interface UpdateUnitResult {
   readonly message?: string;
 }
 
-const unitChangeInput = z.object({
+const categoryChangeInput = z.object({
   ingredientId: z.uuid(),
+  category: z.string().trim().min(1).max(40),
+});
+
+export interface UpdateCategoryResult {
+  readonly error?: string;
+  readonly message?: string;
+}
+
+/** Move an ingredient into an existing or newly named category. */
+export async function updateIngredientCategory(raw: unknown): Promise<UpdateCategoryResult> {
+  const parsed = categoryChangeInput.safeParse(raw);
+  if (!parsed.success) return { error: "Give the category a name." };
+
+  const { data: session } = await auth.getSession();
+  if (!session?.user) return { error: "You are signed out." };
+
+  const user = await getOrCreateAppUser({
+    id: session.user.id,
+    email: session.user.email,
+    name: session.user.name,
+  });
+  const db = getDb();
+
+  const [ingredient] = await db
+    .select({ id: ingredients.id })
+    .from(ingredients)
+    .where(and(eq(ingredients.id, parsed.data.ingredientId), eq(ingredients.userId, user.id)))
+    .limit(1);
+  if (!ingredient) return { error: "That ingredient isn't yours." };
+
+  const category = await ensureCategory(user.id, parsed.data.category);
+  await db
+    .update(ingredients)
+    .set({ categoryId: category.id })
+    .where(eq(ingredients.id, ingredient.id));
+
+  revalidatePath("/pantry");
+  return { message: `Moved to ${category.name}.` };
+}
+
+const unitChangeInput = z.object({  ingredientId: z.uuid(),
   stockUnit: z.string().min(1).max(16),
   /** Grams per one of the new unit, when the units need a bridge. */
   gramsPerUnit: z.coerce.number().positive().max(100_000).optional(),
@@ -169,18 +211,25 @@ export async function createIngredient(raw: unknown): Promise<CreateIngredientRe
     .limit(1);
 
   if (existing) {
+    const [existingCategory] = await db
+      .select({ name: categories.name })
+      .from(categories)
+      .where(eq(categories.id, existing.categoryId))
+      .limit(1);
     return {
       ingredient: {
         id: existing.id,
         name: existing.name,
         stockUnit: existing.stockUnit as UnitCode,
-        category: existing.category,
+        category: existingCategory?.name ?? "Other",
+        categoryId: existing.categoryId,
         aliases: existing.aliases,
       },
     };
   }
 
-  const category = parsed.data.category;
+  const category = await ensureCategory(user.id, parsed.data.category);
+
   // A per-piece weight is optional, but a counted item stocked in grams is
   // useless without one, so capture it when the user supplies it.
   const gramsPer =
@@ -188,7 +237,7 @@ export async function createIngredient(raw: unknown): Promise<CreateIngredientRe
       ? { each: parsed.data.gramsPerUnit }
       : null;
   const shelfLife =
-    category === "frozen" ? 180 : category === "tins" || category === "dry" ? 730 : 7;
+    category.slug === "frozen" ? 180 : category.slug === "tins" || category.slug === "dry" ? 730 : 7;
 
   const [created] = await db
     .insert(ingredients)
@@ -196,7 +245,7 @@ export async function createIngredient(raw: unknown): Promise<CreateIngredientRe
       userId: user.id,
       name: parsed.data.name,
       slug,
-      category,
+      categoryId: category.id,
       stockUnit,
       gramsPer,
       shelfLifeDays: shelfLife,
@@ -212,7 +261,8 @@ export async function createIngredient(raw: unknown): Promise<CreateIngredientRe
       id: created.id,
       name: created.name,
       stockUnit: created.stockUnit as UnitCode,
-      category: created.category,
+      category: category.name,
+      categoryId: category.id,
       aliases: created.aliases,
     },
   };

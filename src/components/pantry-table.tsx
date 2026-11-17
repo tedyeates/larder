@@ -8,32 +8,6 @@ import { EditIngredientSheet } from "./edit-ingredient-sheet";
 import { StockSheet } from "./stock-sheet";
 import { SwipeToEdit } from "./swipe-to-edit";
 
-const CATEGORY_ORDER = [
-  "produce",
-  "dairy",
-  "meat",
-  "fish",
-  "bakery",
-  "dry",
-  "frozen",
-  "tins",
-  "drinks",
-  "other",
-] as const;
-
-const CATEGORY_LABEL: Record<string, string> = {
-  produce: "Produce",
-  dairy: "Dairy",
-  meat: "Meat",
-  fish: "Fish",
-  bakery: "Bakery",
-  dry: "Dry goods",
-  frozen: "Frozen",
-  tins: "Tins",
-  drinks: "Drinks",
-  other: "Other",
-};
-
 type Filter = "in-stock" | "attention" | "all";
 
 function chipClass(row: PantryRow): string {
@@ -76,17 +50,24 @@ export function PantryTable({
   }, [rows, query, filter]);
 
   const groups = useMemo(() => {
-    const byCategory = new Map<string, PantryRow[]>();
+    const byCategory = new Map<string, { label: string; sortOrder: number; rows: PantryRow[] }>();
     for (const row of visible) {
-      const list = byCategory.get(row.category) ?? [];
-      list.push(row);
-      byCategory.set(row.category, list);
+      const existing = byCategory.get(row.categoryId);
+      if (existing) {
+        existing.rows.push(row);
+      } else {
+        byCategory.set(row.categoryId, {
+          label: row.category,
+          sortOrder: row.categorySortOrder,
+          rows: [row],
+        });
+      }
     }
-    return CATEGORY_ORDER.filter((category) => byCategory.has(category)).map((category) => ({
-      category,
-      label: CATEGORY_LABEL[category] ?? category,
-      rows: byCategory.get(category) ?? [],
-    }));
+    return [...byCategory.entries()]
+      .sort(
+        (a, b) => a[1].sortOrder - b[1].sortOrder || a[1].label.localeCompare(b[1].label),
+      )
+      .map(([category, group]) => ({ category, label: group.label, rows: group.rows }));
   }, [visible]);
 
   const inStock = rows.filter((row) => row.onHand > 0).length;
@@ -237,7 +218,13 @@ export function PantryTable({
 
       {selected !== null && <StockSheet row={selected} onClose={() => setSelected(null)} />}
       {editing !== null && (
-        <EditIngredientSheet row={editing} onClose={() => setEditing(null)} />
+        <EditIngredientSheet
+          row={editing}
+          categories={[...new Set(ingredients.map((item) => item.category))].sort((a, b) =>
+            a.localeCompare(b),
+          )}
+          onClose={() => setEditing(null)}
+        />
       )}
       {adding && (
         <AddStockSheet ingredients={ingredients} onClose={() => setAdding(false)} />

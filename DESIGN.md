@@ -85,6 +85,10 @@ Seed ~150 common ingredients with category + sensible shelf lives + aliases. Ove
 to the row; no separate table. Unknown ingredients can be created inline from the pantry or the
 adjust sheet, and inherit a category-based shelf life.
 
+Categories are rows, not an enum: ten defaults are seeded per user and you can add your own by name.
+Ingredients reference `category_id`, and both the pantry grouping and the picker's suggestions follow
+`sort_order` then name.
+
 ### The ledger
 
 `stock_entry` is append-only and is the only place quantity lives.

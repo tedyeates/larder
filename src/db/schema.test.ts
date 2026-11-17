@@ -35,10 +35,16 @@ beforeAll(async () => {
   );
   userId = user.rows[0]?.id ?? "";
 
+  const category = await db.query<{ id: string }>(
+    "insert into categories (user_id, name, slug, sort_order) values ($1, 'Dry goods', 'dry', 5) returning id",
+    [userId],
+  );
+  const categoryId = category.rows[0]?.id ?? "";
+
   const ingredient = await db.query<{ id: string }>(
     `insert into ingredients (user_id, name, slug, category, stock_unit, shelf_life_days)
-     values ($1, 'Rice', 'rice', 'dry', 'g', 730) returning id`,
-    [userId],
+     values ($1, 'Rice', 'rice', $2, 'g', 730) returning id`,
+    [userId, categoryId],
   );
   riceId = ingredient.rows[0]?.id ?? "";
 });

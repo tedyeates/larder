@@ -37,6 +37,21 @@ export const ingredientCategory = pgEnum("ingredient_category", [
   "other",
 ]);
 
+export const categories = pgTable(
+  "categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    slug: text("slug").notNull(),
+    sortOrder: integer("sort_order").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("categories_user_slug_idx").on(table.userId, table.slug)],
+);
+
 export const stockReason = pgEnum("stock_reason", ["purchase", "cook", "adjust", "discard"]);
 
 export const planStatus = pgEnum("plan_status", ["draft", "active", "archived"]);
@@ -79,7 +94,9 @@ export const ingredients = pgTable(
       .references(() => users.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     slug: text("slug").notNull(),
-    category: ingredientCategory("category").notNull().default("other"),
+    categoryId: uuid("category")
+      .notNull()
+      .references(() => categories.id, { onDelete: "restrict" }),
     aliases: text("aliases").array().notNull().default(sql`'{}'::text[]`),
     /** The single unit this ingredient is stocked and counted in. */
     stockUnit: text("stock_unit").notNull(),
@@ -92,7 +109,7 @@ export const ingredients = pgTable(
   },
   (table) => [
     uniqueIndex("ingredients_user_slug_idx").on(table.userId, table.slug),
-    index("ingredients_user_category_idx").on(table.userId, table.category),
+    index("ingredients_user_category_idx").on(table.userId, table.categoryId),
   ],
 );
 
