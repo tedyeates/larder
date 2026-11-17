@@ -45,7 +45,7 @@ export function StockSheet({ row, onClose }: { row: PantryRow; onClose: () => vo
         role="dialog"
         aria-modal="true"
         aria-label={`Adjust ${row.name}`}
-        className="w-full max-w-md rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl dark:bg-neutral-950"
+        className="max-h-[90dvh] w-full max-w-md overflow-y-auto rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl sm:pb-5 dark:bg-neutral-950"
       >
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>

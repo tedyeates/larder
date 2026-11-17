@@ -349,7 +349,7 @@ export function WeekBoard({
             role="dialog"
             aria-modal="true"
             aria-label="Add a meal"
-            className="w-full max-w-md space-y-4 rounded-t-2xl bg-white p-5 shadow-xl sm:rounded-2xl dark:bg-neutral-950"
+            className="max-h-[90dvh] w-full max-w-md space-y-4 overflow-y-auto rounded-t-2xl bg-white p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] shadow-xl sm:rounded-2xl sm:pb-5 dark:bg-neutral-950"
           >
             <div className="flex items-start justify-between">
               <h2 className="text-lg font-semibold">

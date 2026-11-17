@@ -5,6 +5,26 @@
   color-scheme: light dark;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
   @apply bg-white text-neutral-900 antialiased dark:bg-neutral-950 dark:text-neutral-100;
+  /* Kill the double-tap-to-zoom delay on buttons; pinch zoom still works. */
+  touch-action: manipulation;
+}
+
+/*
+ * iOS Safari zooms the page when a focused field has a font-size below 16px,
+ * which then leaves the layout looking squashed. Keep mobile form controls at
+ * 16px regardless of the utility classes; the visual difference is negligible
+ * and the viewport stops jumping.
+ */
+@media (max-width: 640px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
 }
