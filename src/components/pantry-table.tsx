@@ -6,6 +6,7 @@ import type { PantryRow } from "@/lib/pantry";
 import { AddStockSheet } from "./add-stock-sheet";
 import { EditIngredientSheet } from "./edit-ingredient-sheet";
 import { StockSheet } from "./stock-sheet";
+import { SwipeToEdit } from "./swipe-to-edit";
 
 const CATEGORY_ORDER = [
   "produce",
@@ -184,50 +185,48 @@ export function PantryTable({
               </h2>
               <ul className="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
                 {group.rows.map((row) => (
-                  <li key={row.id} className="flex items-center justify-between gap-4 px-4 py-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-medium">{row.name}</p>
-                      <p className="text-xs text-neutral-500">
-                        {row.onHand <= 0
-                          ? row.ranOutLabel === null
-                            ? "Not in stock"
-                            : `Ran out ${row.ranOutLabel}`
-                          : row.useBy === null
-                            ? "No use-by"
-                            : `Use by ${row.useBy}`}
-                        {row.expired ? " · expired" : ""}
-                      </p>
-                    </div>
+                  <li key={row.id}>
+                    <SwipeToEdit onEdit={() => setEditing(row)}>
+                      <div className="flex items-start justify-between gap-3 px-4 py-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-medium">{row.name}</p>
+                          <p className="text-xs text-neutral-500">
+                            {row.onHand <= 0
+                              ? row.ranOutLabel === null
+                                ? "Not in stock"
+                                : `Ran out ${row.ranOutLabel}`
+                              : row.useBy === null
+                                ? "No use-by"
+                                : `Use by ${row.useBy}`}
+                            {row.expired ? " · expired" : ""}
+                          </p>
+                        </div>
 
-                    <div className="flex shrink-0 items-center gap-3">
-                      <span className="text-sm tabular-nums">{row.display}</span>
-                      <span
-                        className={`rounded-full px-2 py-0.5 text-xs font-medium ${chipClass(row)}`}
-                      >
-                        {row.status}
-                      </span>
-                      {row.low && row.status !== "Low" && (
-                        <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
-                          low
-                        </span>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setEditing(row)}
-                        aria-label={`Edit the unit for ${row.name}`}
-                        className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-500 hover:border-neutral-500 hover:text-neutral-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setSelected(row)}
-                        aria-label={`Adjust ${row.name}`}
-                        className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-500 hover:text-neutral-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100"
-                      >
-                        Adjust
-                      </button>
-                    </div>
+                        <div className="flex shrink-0 items-start gap-2">
+                          <div className="flex flex-col items-end gap-1">
+                            <span className="text-sm tabular-nums">{row.display}</span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-xs font-medium ${chipClass(row)}`}
+                            >
+                              {row.status}
+                            </span>
+                            {row.low && row.status !== "Low" && (
+                              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+                                low
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setSelected(row)}
+                            aria-label={`Adjust ${row.name}`}
+                            className="rounded-md border border-neutral-300 px-2 py-1 text-xs text-neutral-600 hover:border-neutral-500 hover:text-neutral-900 dark:border-neutral-700 dark:text-neutral-400 dark:hover:text-neutral-100"
+                          >
+                            Adjust
+                          </button>
+                        </div>
+                      </div>
+                    </SwipeToEdit>
                   </li>
                 ))}
               </ul>
