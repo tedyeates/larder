@@ -13,7 +13,7 @@ import { getOrCreateAppUser } from "@/lib/users";
 
 const input = z.object({
   name: z.string().trim().min(1).max(80),
-  category: z.string().trim().min(1).max(40).default("Other"),
+  category: z.string().trim().max(40).optional(),
   stockUnit: z.string().min(1).max(16),
   gramsPerUnit: z.coerce.number().positive().max(100_000).optional(),
 });
@@ -228,7 +228,7 @@ export async function createIngredient(raw: unknown): Promise<CreateIngredientRe
     };
   }
 
-  const category = await ensureCategory(user.id, parsed.data.category);
+  const category = await ensureCategory(user.id, parsed.data.category?.trim() || "Other");
 
   // A per-piece weight is optional, but a counted item stocked in grams is
   // useless without one, so capture it when the user supplies it.

@@ -28,7 +28,7 @@ export function IngredientPicker({
   const [open, setOpen] = useState(false);
   const [creating, setCreating] = useState(false);
   const [unit, setUnit] = useState<UnitCode>(selected?.stockUnit ?? "g");
-  const [category, setCategory] = useState("Other");
+  const [category, setCategory] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const containerRef = useRef<HTMLDivElement>(null);
