@@ -11,6 +11,7 @@ export interface ShoppingRow {
   readonly status: "pending" | "ticked" | "removed";
   readonly origin: "generated" | "manual";
   readonly ingredientId: string | null;
+  readonly quantityLocked: boolean;
 }
 
 export async function getOpenList(userId: string): Promise<{ id: string; name: string }> {
@@ -40,6 +41,7 @@ export async function getShoppingRows(listId: string): Promise<ShoppingRow[]> {
       status: shoppingItems.status,
       origin: shoppingItems.origin,
       ingredientId: shoppingItems.ingredientId,
+      quantityLocked: shoppingItems.quantityLocked,
     })
     .from(shoppingItems)
     .where(eq(shoppingItems.listId, listId))

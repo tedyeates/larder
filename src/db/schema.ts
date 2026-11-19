@@ -291,6 +291,11 @@ export const shoppingItems = pgTable(
     quantity: numeric("quantity", { precision: 14, scale: 6, mode: "number" }),
     unit: text("unit"),
     note: text("note"),
+    /**
+     * The human has adjusted this amount (a pack of 3 nests, say). Refreshing
+     * the list leaves it alone instead of recalculating the shortfall over it.
+     */
+    quantityLocked: boolean("quantity_locked").notNull().default(false),
     status: shoppingItemStatus("status").notNull().default("pending"),
     origin: shoppingItemOrigin("origin").notNull().default("manual"),
     tickedAt: timestamp("ticked_at", { withTimezone: true }),

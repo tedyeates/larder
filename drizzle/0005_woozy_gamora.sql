@@ -1,0 +1,1 @@
+ALTER TABLE "shopping_items" ADD COLUMN "quantity_locked" boolean DEFAULT false NOT NULL;

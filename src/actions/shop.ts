@@ -134,13 +134,18 @@ export async function generateShoppingList(week: unknown): Promise<ShopResult> {
 
   const list = await getOpenList(user.id);
   let written = 0;
+  let kept = 0;
 
   for (const shortfall of shortfalls) {
     const item = ingredientMap.get(shortfall.ingredientId);
     if (!item) continue;
 
     const [existing] = await db
-      .select({ id: shoppingItems.id, status: shoppingItems.status })
+      .select({
+        id: shoppingItems.id,
+        status: shoppingItems.status,
+        quantityLocked: shoppingItems.quantityLocked,
+      })
       .from(shoppingItems)
       .where(
         and(
@@ -152,6 +157,11 @@ export async function generateShoppingList(week: unknown): Promise<ShopResult> {
       .limit(1);
 
     if (existing && existing.status === "pending") {
+      // A quantity the human adjusted (a whole pack, say) wins over our sum.
+      if (existing.quantityLocked) {
+        kept += 1;
+        continue;
+      }
       await db
         .update(shoppingItems)
         .set({ quantity: shortfall.shortfall, unit: baseUnitFor(item.stockUnit) })
@@ -174,7 +184,85 @@ export async function generateShoppingList(week: unknown): Promise<ShopResult> {
   }
 
   revalidatePath("/shop");
-  return { message: `${written} item(s) added to the list.` };
+  const keptNote = kept === 0 ? "" : ` ${kept} edited amount(s) left as they were.`;
+  return { message: `${written} item(s) added to the list.${keptNote}` };
+}
+
+async function shoppingItemForUser(itemId: string, userId: string) {
+  const [row] = await getDb()
+    .select({
+      id: shoppingItems.id,
+      ingredientId: shoppingItems.ingredientId,
+      label: shoppingItems.label,
+      quantity: shoppingItems.quantity,
+      unit: shoppingItems.unit,
+      status: shoppingItems.status,
+    })
+    .from(shoppingItems)
+    .innerJoin(shoppingLists, eq(shoppingItems.listId, shoppingLists.id))
+    .where(and(eq(shoppingItems.id, itemId), eq(shoppingLists.userId, userId)))
+    .limit(1);
+  return row ?? null;
+}
+
+const quantityInput = z.object({
+  quantity: z.coerce.number().positive().max(1_000_000),
+  unit: z.string().min(1).max(16),
+});
+
+/**
+ * Change the amount on an unbought item. It touches the list only — no stock
+ * moves until the item is ticked. The new amount is locked so "Refresh list"
+ * leaves it alone: you buy the pack, not our arithmetic.
+ */
+export async function updateShoppingItem(itemId: string, input: unknown): Promise<ShopResult> {
+  const parsed = quantityInput.safeParse(input);
+  if (!parsed.success) return { error: "Give the item an amount above zero." };
+
+  const user = await context();
+  if (!user) return { error: "You are signed out." };
+  const db = getDb();
+
+  const row = await shoppingItemForUser(itemId, user.id);
+  if (!row) return { error: "That item is gone." };
+  if (row.status !== "pending") return { error: "Only unbought items can be edited." };
+
+  let unit: UnitCode;
+  try {
+    unit = assertUnitCode(parsed.data.unit);
+  } catch {
+    return { error: `Unknown unit: ${parsed.data.unit}` };
+  }
+
+  if (row.ingredientId !== null) {
+    const [item] = await db
+      .select()
+      .from(ingredients)
+      .where(and(eq(ingredients.id, row.ingredientId), eq(ingredients.userId, user.id)))
+      .limit(1);
+    if (!item) return { error: "That ingredient is gone." };
+
+    try {
+      toBase(parsed.data.quantity, unit, {
+        id: item.id,
+        name: item.name,
+        stockUnit: item.stockUnit as UnitCode,
+        gramsPer: item.gramsPer ?? undefined,
+      });
+    } catch {
+      return {
+        error: `${row.label}: ${unit} can't be converted to ${item.stockUnit}. Pick a unit that fits.`,
+      };
+    }
+  }
+
+  await db
+    .update(shoppingItems)
+    .set({ quantity: parsed.data.quantity, unit, quantityLocked: true })
+    .where(eq(shoppingItems.id, row.id));
+
+  revalidatePath("/shop");
+  return { message: `${row.label} set to ${parsed.data.quantity} ${unit}.` };
 }
 
 export async function tickShoppingItem(itemId: string): Promise<ShopResult> {

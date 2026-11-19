@@ -166,7 +166,7 @@ marks meals cooked.
 
 | `shopping_list` | user_id, name, status (`open`\|`done`), created_at |
 |---|---|
-| `shopping_item` | list_id, ingredient_id (nullable), label, quantity, unit, note, status (`pending`\|`ticked`\|`removed`), origin (`generated`\|`manual`), ticked_at, sort_order, ticktick_task_id, ticktick_project_id, resulting_stock_entry_id |
+| `shopping_item` | list_id, ingredient_id (nullable), label, quantity, unit, note, quantity_locked, status (`pending`\|`ticked`\|`removed`), origin (`generated`\|`manual`), ticked_at, sort_order, ticktick_task_id, ticktick_project_id, resulting_stock_entry_id |
 
 ## 4. Units and conversion
 
@@ -208,7 +208,8 @@ Named count units that frequently need to become mass (onion, garlic clove, carr
 4. Subtract current pantry balance. Positive remainder = shortfall.
 5. Write shortfall rows as `pending`, `origin = generated`.
 6. "Refresh list" appends only what is *still* missing, never duplicates, never resurrects items you
-   removed. `manual` items are never touched.
+   removed. `manual` items are never touched, and a generated item whose amount the human edited is
+   left alone (packs don't divide evenly).
 
 ### Cook → deduct → leftovers
 

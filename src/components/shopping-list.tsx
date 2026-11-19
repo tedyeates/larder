@@ -1,12 +1,19 @@
 "use client";
 
+import { Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { addManualItem, removeShoppingItem, tickShoppingItem } from "@/actions/shop";
-import { siblingUnits, type UnitCode } from "@/domain/units";
+import {
+  addManualItem,
+  removeShoppingItem,
+  tickShoppingItem,
+  updateShoppingItem,
+} from "@/actions/shop";
+import { isUnitCode, siblingUnits, type UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
 import type { ShoppingRow } from "@/lib/shop";
 import { IngredientPicker } from "./ingredient-picker";
+import { SwipeActions } from "./swipe-actions";
 
 export function ShoppingList({
   rows,
@@ -24,9 +31,51 @@ export function ShoppingList({
   const [catalogue, setCatalogue] = useState<IngredientOption[]>([...ingredients]);
   const [quantity, setQuantity] = useState("");
   const [unit, setUnit] = useState<UnitCode>("g");
+  const [editing, setEditing] = useState<{ id: string; quantity: string; unit: UnitCode } | null>(
+    null,
+  );
+  const [editError, setEditError] = useState<string | null>(null);
 
   const selected = catalogue.find((item) => item.id === ingredientId);
   const units = selected ? siblingUnits(selected.stockUnit) : ["g"];
+
+  /** Units that make sense for an existing row: what it's in, what it's stocked in. */
+  function unitsFor(row: ShoppingRow): UnitCode[] {
+    const ingredient = catalogue.find((item) => item.id === row.ingredientId);
+    const options: UnitCode[] = [
+      ...(row.unit !== null && isUnitCode(row.unit) ? [row.unit] : []),
+      ...(ingredient ? [ingredient.stockUnit, ...siblingUnits(ingredient.stockUnit)] : []),
+    ];
+    return [...new Set(options.length > 0 ? options : (["each"] as UnitCode[]))];
+  }
+
+  function startEdit(row: ShoppingRow) {
+    const current = row.unit !== null && isUnitCode(row.unit) ? row.unit : unitsFor(row)[0];
+    setEditing({
+      id: row.id,
+      quantity: row.quantity === null ? "" : String(row.quantity),
+      unit: current ?? "each",
+    });
+    setEditError(null);
+  }
+
+  function saveEdit(row: ShoppingRow) {
+    if (!editing || editing.quantity === "") return;
+    startTransition(async () => {
+      const result = await updateShoppingItem(row.id, {
+        quantity: Number(editing.quantity),
+        unit: editing.unit,
+      });
+      if (result.error) {
+        setEditError(result.error);
+        return;
+      }
+      setEditing(null);
+      setEditError(null);
+      setMessage(result.message ?? null);
+      router.refresh();
+    });
+  }
 
   function tick(row: ShoppingRow) {
     startTransition(async () => {
@@ -80,41 +129,124 @@ export function ShoppingList({
         </p>
       ) : (
         <ul className="divide-y divide-neutral-200 overflow-hidden rounded-xl border border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
-          {[...pendingRows, ...doneRows].map((row) => (
-            <li key={row.id} className="flex items-center gap-3 px-3 py-3">
-              <input
-                type="checkbox"
-                aria-label={`Tick ${row.label}`}
-                checked={row.status !== "pending"}
-                disabled={pending || row.status !== "pending"}
-                onChange={() => tick(row)}
-                className="h-6 w-6 shrink-0 accent-neutral-900 dark:accent-neutral-100"
-              />
+          {[...pendingRows, ...doneRows].map((row) => {
+            const body = (
+              <div className="flex items-center gap-3 px-3 py-3">
+                <input
+                  type="checkbox"
+                  aria-label={`Tick ${row.label}`}
+                  checked={row.status !== "pending"}
+                  disabled={pending || row.status !== "pending"}
+                  onChange={() => tick(row)}
+                  className="h-6 w-6 shrink-0 accent-neutral-900 dark:accent-neutral-100"
+                />
 
-              <div className="min-w-0 flex-1">
-                <p
-                  className={`truncate text-sm ${row.status === "pending" ? "font-medium" : "text-neutral-500 line-through"}`}
-                >
-                  {row.label}
-                </p>
-                <p className="text-xs text-neutral-500">
-                  {row.display || "no amount"}
-                  {row.origin === "generated" ? " · from plan" : ""}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <p
+                    className={`truncate text-sm ${row.status === "pending" ? "font-medium" : "text-neutral-500 line-through"}`}
+                  >
+                    {row.label}
+                  </p>
+
+                  {editing?.id === row.id ? (
+                    <div className="mt-1 space-y-1">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="number"
+                          min="0.01"
+                          step="any"
+                          value={editing.quantity}
+                          onChange={(event) =>
+                            setEditing((current) =>
+                              current ? { ...current, quantity: event.target.value } : current,
+                            )
+                          }
+                          aria-label={`Amount of ${row.label}`}
+                          className="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                        />
+                        <select
+                          value={editing.unit}
+                          onChange={(event) =>
+                            setEditing((current) =>
+                              current
+                                ? { ...current, unit: event.target.value as UnitCode }
+                                : current,
+                            )
+                          }
+                          aria-label={`Unit for ${row.label}`}
+                          className="rounded-lg border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                        >
+                          {unitsFor(row).map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={() => saveEdit(row)}
+                          disabled={pending || editing.quantity === ""}
+                          className="text-xs font-medium underline-offset-4 hover:underline disabled:opacity-50"
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditing(null);
+                            setEditError(null);
+                          }}
+                          disabled={pending}
+                          className="text-xs text-neutral-500 underline-offset-4 hover:underline"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                      {editError !== null && (
+                        <p role="alert" className="text-xs text-red-600 dark:text-red-400">
+                          {editError}
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-neutral-500">
+                      {row.display || "no amount"}
+                      {row.origin === "generated" ? " · from plan" : ""}
+                      {row.quantityLocked ? " · edited" : ""}
+                    </p>
+                  )}
+                </div>
               </div>
+            );
 
-              {row.status === "pending" && (
-                <button
-                  type="button"
-                  onClick={() => remove(row)}
-                  disabled={pending}
-                  className="text-xs text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
-                >
-                  Remove
-                </button>
-              )}
-            </li>
-          ))}
+            return (
+              <li key={row.id}>
+                {row.status === "pending" ? (
+                  <SwipeActions
+                    actions={[
+                      {
+                        key: "edit",
+                        label: "Edit",
+                        icon: <Pencil size={15} />,
+                        onClick: () => startEdit(row),
+                        tone: "primary",
+                      },
+                      {
+                        key: "remove",
+                        label: "Remove",
+                        icon: <Trash2 size={15} />,
+                        onClick: () => remove(row),
+                      },
+                    ]}
+                  >
+                    {body}
+                  </SwipeActions>
+                ) : (
+                  body
+                )}
+              </li>
+            );
+          })}
         </ul>
       )}
 
