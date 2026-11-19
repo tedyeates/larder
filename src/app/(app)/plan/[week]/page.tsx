@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AppNav } from "@/components/app-nav";
 import { WeekBoard } from "@/components/week-board";
 import { addDays } from "@/domain/dates";
 import { auth } from "@/lib/auth/server";
@@ -82,8 +81,6 @@ export default async function WeekPage({ params }: { params: Promise<{ week: str
         leftovers={leftovers}
         plannedCooks={plannedCooks}
       />
-
-      <AppNav />
     </main>
   );
 }

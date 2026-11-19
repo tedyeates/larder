@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { AppNav } from "@/components/app-nav";
 import { PantryTable } from "@/components/pantry-table";
 import { auth } from "@/lib/auth/server";
 import { listIngredientOptions } from "@/lib/catalogue";
@@ -44,8 +43,6 @@ export default async function PantryPage() {
       </header>
 
       <PantryTable rows={rows} ingredients={ingredients} />
-
-      <AppNav />
     </main>
   );
 }

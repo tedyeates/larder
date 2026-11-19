@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import { AppNav } from "@/components/app-nav";
 import { DeleteRecipeButton } from "@/components/delete-recipe-button";
 import { getDb } from "@/db";
 import { ingredients, recipeIngredients, recipes } from "@/db/schema";
@@ -111,8 +110,6 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
           </ol>
         )}
       </section>
-
-      <AppNav />
     </main>
   );
 }

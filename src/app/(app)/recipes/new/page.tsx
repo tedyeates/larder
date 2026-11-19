@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { AppNav } from "@/components/app-nav";
 import { RecipeForm } from "@/components/recipe-form";
 import { auth } from "@/lib/auth/server";
 import { listIngredientOptions } from "@/lib/catalogue";
@@ -26,7 +25,6 @@ export default async function NewRecipePage() {
       </header>
 
       <RecipeForm ingredients={ingredients} />
-      <AppNav />
     </main>
   );
 }

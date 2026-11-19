@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 
 const ITEMS = [
@@ -9,6 +9,22 @@ const ITEMS = [
   { href: "/shop", label: "Shop" },
   { href: "/recipes", label: "Recipes" },
 ] as const;
+
+/**
+ * A fixed-size hint under the tapped tab. It only fades in if navigation takes
+ * a moment, so a prefetched switch stays quiet and the nav never shifts.
+ */
+function PendingHint() {
+  const { pending } = useLinkStatus();
+  return (
+    <span
+      aria-hidden
+      className={`mx-auto mt-0.5 block h-1 w-1 rounded-full bg-current transition-opacity duration-200 ${
+        pending ? "opacity-60 delay-100" : "opacity-0"
+      }`}
+    />
+  );
+}
 
 export function AppNav() {
   const pathname = usePathname();
@@ -28,6 +44,7 @@ export function AppNav() {
                 }`}
               >
                 {item.label}
+                <PendingHint />
               </Link>
             </li>
           );

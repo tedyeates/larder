@@ -1,6 +1,5 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { AppNav } from "@/components/app-nav";
 import { CopyBlock } from "@/components/copy-block";
 import { auth } from "@/lib/auth/server";
 
@@ -105,8 +104,6 @@ The full setup notes are at ${base}/prompts/agent-setup.md`;
           Revoke by changing <code>LARDER_MCP_TOKEN</code> in the environment and restarting.
         </p>
       </section>
-
-      <AppNav />
     </main>
   );
 }

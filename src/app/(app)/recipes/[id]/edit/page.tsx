@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import { notFound, redirect } from "next/navigation";
-import { AppNav } from "@/components/app-nav";
 import { RecipeForm } from "@/components/recipe-form";
 import { getDb } from "@/db";
 import { recipeIngredients, recipes } from "@/db/schema";
@@ -63,8 +62,6 @@ export default async function EditRecipePage({ params }: { params: Promise<{ id:
           })),
         }}
       />
-
-      <AppNav />
     </main>
   );
 }

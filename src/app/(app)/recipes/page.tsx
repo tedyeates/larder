@@ -1,7 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AppNav } from "@/components/app-nav";
 import { getDb } from "@/db";
 import { recipes } from "@/db/schema";
 import { auth } from "@/lib/auth/server";
@@ -59,8 +58,6 @@ export default async function RecipesPage() {
           ))}
         </ul>
       )}
-
-      <AppNav />
     </main>
   );
 }

@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { AppNav } from "@/components/app-nav";
 import { ShoppingList } from "@/components/shopping-list";
 import { auth } from "@/lib/auth/server";
 import { listIngredientOptions } from "@/lib/catalogue";
@@ -35,8 +34,6 @@ export default async function ShopPage() {
       </header>
 
       <ShoppingList rows={rows} ingredients={ingredients} week={currentWeek()} />
-
-      <AppNav />
     </main>
   );
 }
