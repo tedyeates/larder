@@ -162,7 +162,7 @@ export function ShoppingList({
                             )
                           }
                           aria-label={`Amount of ${row.label}`}
-                          className="w-20 rounded-lg border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                          className="h-9 w-20 rounded-lg border border-neutral-300 px-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
                         />
                         <select
                           value={editing.unit}
@@ -174,7 +174,7 @@ export function ShoppingList({
                             )
                           }
                           aria-label={`Unit for ${row.label}`}
-                          className="rounded-lg border border-neutral-300 px-2 py-1 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                          className="h-9 rounded-lg border border-neutral-300 px-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
                         >
                           {unitsFor(row).map((option) => (
                             <option key={option} value={option}>
