@@ -2,7 +2,7 @@
 
 import { Pencil, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useOptimistic, useState, useTransition } from "react";
 import {
   addManualItem,
   removeShoppingItem,
@@ -15,6 +15,40 @@ import type { ShoppingRow } from "@/lib/shop";
 import { IngredientPicker } from "./ingredient-picker";
 import { SwipeActions } from "./swipe-actions";
 
+type OptimisticChange =
+  | { kind: "tick"; id: string }
+  | { kind: "remove"; id: string }
+  | { kind: "edit"; id: string; quantity: number; unit: UnitCode }
+  | { kind: "add"; row: ShoppingRow };
+
+function amountDisplay(quantity: number, unit: string): string {
+  return `${Math.round(quantity * 1000) / 1000} ${unit}`.trim();
+}
+
+/** Fold one change into the list so the screen responds before the database does. */
+function applyChange(rows: readonly ShoppingRow[], change: OptimisticChange): ShoppingRow[] {
+  switch (change.kind) {
+    case "tick":
+      return rows.map((row) => (row.id === change.id ? { ...row, status: "ticked" } : row));
+    case "remove":
+      return rows.filter((row) => row.id !== change.id);
+    case "edit":
+      return rows.map((row) =>
+        row.id === change.id
+          ? {
+              ...row,
+              quantity: change.quantity,
+              unit: change.unit,
+              quantityLocked: true,
+              display: amountDisplay(change.quantity, change.unit),
+            }
+          : row,
+      );
+    case "add":
+      return [change.row, ...rows];
+  }
+}
+
 export function ShoppingList({
   rows,
   ingredients,
@@ -26,6 +60,7 @@ export function ShoppingList({
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
+  const [visibleRows, applyOptimistic] = useOptimistic(rows, applyChange);
   const [message, setMessage] = useState<string | null>(null);
   const [ingredientId, setIngredientId] = useState("");
   const [catalogue, setCatalogue] = useState<IngredientOption[]>([...ingredients]);
@@ -61,11 +96,11 @@ export function ShoppingList({
 
   function saveEdit(row: ShoppingRow) {
     if (!editing || editing.quantity === "") return;
+    const quantity = Number(editing.quantity);
+    const unit = editing.unit;
     startTransition(async () => {
-      const result = await updateShoppingItem(row.id, {
-        quantity: Number(editing.quantity),
-        unit: editing.unit,
-      });
+      applyOptimistic({ kind: "edit", id: row.id, quantity, unit });
+      const result = await updateShoppingItem(row.id, { quantity, unit });
       if (result.error) {
         setEditError(result.error);
         return;
@@ -79,36 +114,57 @@ export function ShoppingList({
 
   function tick(row: ShoppingRow) {
     startTransition(async () => {
+      applyOptimistic({ kind: "tick", id: row.id });
       const result = await tickShoppingItem(row.id);
       setMessage(result.error ?? result.message ?? null);
-      router.refresh();
+      if (!result.error) router.refresh();
     });
   }
 
   function remove(row: ShoppingRow) {
     startTransition(async () => {
-      await removeShoppingItem(row.id);
+      applyOptimistic({ kind: "remove", id: row.id });
+      const result = await removeShoppingItem(row.id);
+      if (result.error) {
+        setMessage(result.error);
+        return;
+      }
       router.refresh();
     });
   }
 
   function add() {
     if (!selected || quantity === "") return;
+    const label = selected.name;
+    const amount = Number(quantity);
+    const optimisticRow: ShoppingRow = {
+      id: `pending-${Date.now()}`,
+      label,
+      quantity: amount,
+      unit,
+      display: amountDisplay(amount, unit),
+      status: "pending",
+      origin: "manual",
+      ingredientId: selected.id,
+      quantityLocked: false,
+    };
     startTransition(async () => {
+      applyOptimistic({ kind: "add", row: optimisticRow });
       const result = await addManualItem({
         ingredientId: selected.id,
-        label: selected.name,
-        quantity: Number(quantity),
+        label,
+        quantity: amount,
         unit,
       });
       setMessage(result.error ?? result.message ?? null);
+      if (result.error) return;
       setQuantity("");
       router.refresh();
     });
   }
 
-  const pendingRows = rows.filter((row) => row.status === "pending");
-  const doneRows = rows.filter((row) => row.status !== "pending");
+  const pendingRows = visibleRows.filter((row) => row.status === "pending");
+  const doneRows = visibleRows.filter((row) => row.status !== "pending");
 
   return (
     <div className="space-y-5">
@@ -123,7 +179,7 @@ export function ShoppingList({
         <p className="rounded-lg bg-neutral-100 px-3 py-2 text-sm dark:bg-neutral-900">{message}</p>
       )}
 
-      {rows.length === 0 ? (
+      {visibleRows.length === 0 ? (
         <p className="rounded-xl border border-dashed border-neutral-300 px-6 py-10 text-center text-sm text-neutral-500 dark:border-neutral-700">
           The list is empty. Plan some meals and hit “Generate shopping list”, or add an item below.
         </p>
@@ -136,7 +192,7 @@ export function ShoppingList({
                   type="checkbox"
                   aria-label={`Tick ${row.label}`}
                   checked={row.status !== "pending"}
-                  disabled={pending || row.status !== "pending"}
+                  disabled={row.status !== "pending"}
                   onChange={() => tick(row)}
                   className="h-6 w-6 shrink-0 accent-neutral-900 dark:accent-neutral-100"
                 />
