@@ -9,7 +9,7 @@ import {
   tickShoppingItem,
   updateShoppingItem,
 } from "@/actions/shop";
-import { isUnitCode, siblingUnits, type UnitCode } from "@/domain/units";
+import { baseUnitFor, entryUnits, isUnitCode, type UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
 import type { ShoppingRow } from "@/lib/shop";
 import { IngredientPicker } from "./ingredient-picker";
@@ -72,14 +72,14 @@ export function ShoppingList({
   const [editError, setEditError] = useState<string | null>(null);
 
   const selected = catalogue.find((item) => item.id === ingredientId);
-  const units = selected ? siblingUnits(selected.stockUnit) : ["g"];
+  const units = selected ? entryUnits(selected) : ["g"];
 
   /** Units that make sense for an existing row: what it's in, what it's stocked in. */
   function unitsFor(row: ShoppingRow): UnitCode[] {
     const ingredient = catalogue.find((item) => item.id === row.ingredientId);
     const options: UnitCode[] = [
       ...(row.unit !== null && isUnitCode(row.unit) ? [row.unit] : []),
-      ...(ingredient ? [ingredient.stockUnit, ...siblingUnits(ingredient.stockUnit)] : []),
+      ...(ingredient ? [ingredient.stockUnit, ...entryUnits(ingredient)] : []),
     ];
     return [...new Set(options.length > 0 ? options : (["each"] as UnitCode[]))];
   }
@@ -317,7 +317,7 @@ export function ShoppingList({
                 current.some((item) => item.id === option.id) ? current : [...current, option],
               );
               setIngredientId(option.id);
-              setUnit(siblingUnits(option.stockUnit)[0] ?? "g");
+              setUnit(baseUnitFor(option.stockUnit));
             }}
           />
 

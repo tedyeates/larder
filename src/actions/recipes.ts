@@ -139,7 +139,9 @@ export async function updateRecipe(formData: FormData): Promise<UpdateRecipeResu
         gramsPer: item.gramsPer ?? undefined,
       });
     } catch {
-      return { error: `${item.name}: ${line.unit} can't be converted to ${item.stockUnit}.` };
+      return {
+        error: `${item.name}: ${line.unit} can't be converted to ${item.stockUnit}. Set grams per ${line.unit} for ${item.name} in the pantry.`,
+      };
     }
   }
 
@@ -233,7 +235,9 @@ export async function createRecipe(formData: FormData): Promise<CreateRecipeResu
         gramsPer: item.gramsPer ?? undefined,
       });
     } catch {
-      return { error: `${item.name}: ${line.unit} can't be converted to ${item.stockUnit}.` };
+      return {
+        error: `${item.name}: ${line.unit} can't be converted to ${item.stockUnit}. Set grams per ${line.unit} for ${item.name} in the pantry.`,
+      };
     }
   }
 

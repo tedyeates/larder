@@ -4,6 +4,7 @@ import {
   ConversionError,
   canConvert,
   convertBetweenIngredients,
+  entryUnits,
   formatQuantity,
   fromBase,
   type IngredientUnits,
@@ -74,6 +75,27 @@ describe("toBase", () => {
     expect(toBase(2, "tbsp", flour)).toBe(16);
   });
 
+  it("derives other volume measures from whichever weight it has", () => {
+    const cupOnly: IngredientUnits = {
+      id: "flour",
+      name: "Flour",
+      stockUnit: "g",
+      gramsPer: { cup: 120 },
+    };
+    expect(toBase(1, "tbsp", cupOnly)).toBeCloseTo(7.5, 6);
+    expect(toBase(1, "tsp", cupOnly)).toBeCloseTo(2.5, 6);
+  });
+
+  it("uses a volume weight as density for a volume-stocked ingredient", () => {
+    const stockInMl: IngredientUnits = {
+      id: "milk",
+      name: "Milk",
+      stockUnit: "ml",
+      gramsPer: { cup: 240 },
+    };
+    expect(toBase(100, "g", stockInMl)).toBe(100);
+  });
+
   it("crosses mass into volume using density", () => {
     expect(roundAmount(toBase(103, "g", milk))).toBe(100);
   });
@@ -98,6 +120,33 @@ describe("fromBase", () => {
   it("reports convertibility without throwing", () => {
     expect(canConvert("cup", "g", flour)).toBe(true);
     expect(canConvert("cup", "g", rice)).toBe(false);
+  });
+});
+
+describe("entryUnits", () => {
+  it("offers cups and spoons for a gram ingredient that has weights for them", () => {
+    const units = entryUnits(flour);
+    expect(units).toContain("g");
+    expect(units).toContain("kg");
+    expect(units).toContain("cup");
+    expect(units).toContain("tbsp");
+    expect(units).toContain("tsp");
+  });
+
+  it("offers grams when a volume ingredient has a density", () => {
+    const units = entryUnits(milk);
+    expect(units).toContain("ml");
+    expect(units).toContain("cup");
+    expect(units).toContain("g");
+  });
+
+  it("offers counted hints for a mass ingredient", () => {
+    expect(entryUnits(onion)).toContain("each");
+  });
+
+  it("keeps an unhinted ingredient to its own family", () => {
+    const mystery: IngredientUnits = { id: "x", name: "Mystery", stockUnit: "g" };
+    expect(entryUnits(mystery)).toEqual(["g", "kg", "oz", "lb"]);
   });
 });
 
@@ -155,9 +204,26 @@ describe("convertBetweenIngredients", () => {
     const grams: IngredientUnits = { id: "onion", name: "Onion", stockUnit: "g" };
     expect(convertBetweenIngredients(300, grams, onion)).toBe(2);
   });
+
+  it("uses a cup weight as density when swapping between grams and millilitres", () => {
+    const grams: IngredientUnits = {
+      id: "milk",
+      name: "Milk",
+      stockUnit: "g",
+      gramsPer: { cup: 240 },
+    };
+    const millilitres: IngredientUnits = {
+      id: "milk",
+      name: "Milk",
+      stockUnit: "ml",
+      gramsPer: { cup: 240 },
+    };
+    expect(convertBetweenIngredients(240, grams, millilitres)).toBe(240);
+  });
 });
 
-describe("roundAmount", () => {  it("removes floating point dust", () => {
+describe("roundAmount", () => {
+  it("removes floating point dust", () => {
     expect(roundAmount(0.1 + 0.2)).toBe(0.3);
     expect(roundAmount(-0)).toBe(0);
   });

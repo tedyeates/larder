@@ -10,6 +10,8 @@ export interface IngredientOption {
   readonly category: string;
   readonly categoryId: string;
   readonly aliases: readonly string[];
+  /** Gram weights for units a recipe might use, e.g. `{ cup: 120 }`. */
+  readonly gramsPer?: Partial<Record<UnitCode, number>>;
 }
 
 export async function listIngredientOptions(userId: string): Promise<IngredientOption[]> {
@@ -21,6 +23,7 @@ export async function listIngredientOptions(userId: string): Promise<IngredientO
       category: categories.name,
       categoryId: ingredients.categoryId,
       aliases: ingredients.aliases,
+      gramsPer: ingredients.gramsPer,
     })
     .from(ingredients)
     .innerJoin(categories, eq(ingredients.categoryId, categories.id))
@@ -31,5 +34,6 @@ export async function listIngredientOptions(userId: string): Promise<IngredientO
     ...row,
     stockUnit: row.stockUnit as UnitCode,
     aliases: row.aliases ?? [],
+    gramsPer: row.gramsPer ?? undefined,
   }));
 }

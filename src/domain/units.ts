@@ -72,7 +72,7 @@ export class ConversionError extends Error {
   ) {
     super(
       `Cannot convert ${from} to ${to} for ${ingredient.name}. ` +
-        `Set a ${from}-per-${to} hint or correct the recipe unit.`,
+        `Set grams per ${from} for this ingredient, or correct the recipe unit.`,
     );
     this.name = "ConversionError";
   }
@@ -105,17 +105,48 @@ export function roundAmount(amount: number): number {
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
+/** Grams per millilitre, inferred from any volume weight the ingredient carries. */
+function gramsPerMl(ingredient: IngredientUnits): number | null {
+  let best: { toBase: number; gramsPerMl: number } | null = null;
+
+  for (const unit of Object.keys(UNITS) as UnitCode[]) {
+    if (unitFamily(unit) !== "volume") continue;
+    const grams = ingredient.gramsPer?.[unit];
+    if (grams === undefined || grams <= 0) continue;
+
+    // Prefer the largest measure: a cup weight is usually rounded less than a tsp.
+    if (best === null || UNITS[unit].toBase > best.toBase) {
+      best = { toBase: UNITS[unit].toBase, gramsPerMl: grams / UNITS[unit].toBase };
+    }
+  }
+
+  return best?.gramsPerMl ?? null;
+}
+
 function gramsPerBase(ingredient: IngredientUnits): number | null {
   const base = baseUnitFor(ingredient.stockUnit);
   if (unitFamily(base) === "mass") return 1;
+
   const hint = ingredient.gramsPer?.[base];
-  return hint !== undefined && hint > 0 ? hint : null;
+  if (hint !== undefined && hint > 0) return hint;
+
+  // A cup weight tells us the density, so grams can bridge into a volume stock.
+  return unitFamily(base) === "volume" ? gramsPerMl(ingredient) : null;
 }
 
 function gramsOf(amount: number, unit: UnitCode, ingredient: IngredientUnits): number | null {
   if (unitFamily(unit) === "mass") return amount * UNITS[unit].toBase;
+
   const hint = ingredient.gramsPer?.[unit];
-  return hint !== undefined && hint > 0 ? amount * hint : null;
+  if (hint !== undefined && hint > 0) return amount * hint;
+
+  // Any volume weight fixes the whole family: a cup also gives tablespoons.
+  if (unitFamily(unit) === "volume") {
+    const perMl = gramsPerMl(ingredient);
+    if (perMl !== null) return amount * perMl * UNITS[unit].toBase;
+  }
+
+  return null;
 }
 
 /**
@@ -182,12 +213,40 @@ export function siblingUnits(stockUnit: UnitCode): UnitCode[] {
   return [stockUnit];
 }
 
+/**
+ * Every unit this ingredient can actually be measured in, most natural first.
+ *
+ * Same-family units come free. Anything else — cups of flour stocked in grams,
+ * grams of onion stocked by the each — only appears when the ingredient carries
+ * a gram weight for it, so the picker never offers a conversion that will fail.
+ */
+export function entryUnits(ingredient: IngredientUnits): UnitCode[] {
+  const base = baseUnitFor(ingredient.stockUnit);
+  const family = unitFamily(base);
+  const all = Object.keys(UNITS) as UnitCode[];
+
+  const ordered = [
+    ingredient.stockUnit,
+    ...all.filter((unit) => unitFamily(unit) === family && (family !== "count" || unit === base)),
+    ...all,
+  ];
+
+  const units: UnitCode[] = [];
+  for (const unit of ordered) {
+    if (units.includes(unit)) continue;
+    try {
+      toBase(1, unit, ingredient);
+      units.push(unit);
+    } catch {
+      // No bridge to this unit, so the picker leaves it out.
+    }
+  }
+  return units;
+}
+
 /** Grams represented by one base unit, or null when no hint exists. */
 export function baseGramsPerUnit(ingredient: IngredientUnits): number | null {
-  const base = baseUnitFor(ingredient.stockUnit);
-  if (unitFamily(base) === "mass") return 1;
-  const hint = ingredient.gramsPer?.[base];
-  return hint !== undefined && hint > 0 ? hint : null;
+  return gramsPerBase(ingredient);
 }
 
 /**

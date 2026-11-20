@@ -333,6 +333,7 @@ export function buildLarderServer(userId: string): McpServer {
           stockUnit: ingredients.stockUnit,
           category: categories.name,
           aliases: ingredients.aliases,
+          gramsPer: ingredients.gramsPer,
         })
         .from(ingredients)
         .innerJoin(categories, eq(ingredients.categoryId, categories.id))
@@ -354,6 +355,7 @@ export function buildLarderServer(userId: string): McpServer {
           stock_unit: row.stockUnit,
           category: row.category,
           aliases: row.aliases,
+          grams_per: row.gramsPer ?? null,
         })),
       );
     },
@@ -364,7 +366,7 @@ export function buildLarderServer(userId: string): McpServer {
     {
       title: "Create an ingredient",
       description:
-        "Add one ingredient to the catalogue. Idempotent by name. Choose the unit you would actually count it in at home, and give grams per unit when the recipe measures it differently.",
+        "Add one ingredient to the catalogue. Idempotent by name. Choose the unit you would actually count it in at home, and give gram weights for the units a recipe measures it in (cups, spoons, pieces).",
       inputSchema: {
         name: z.string().min(1).max(80),
         stock_unit: z.string().min(1).max(16),
@@ -379,16 +381,29 @@ export function buildLarderServer(userId: string): McpServer {
           .positive()
           .max(100_000)
           .optional()
-          .describe("Grams per one counted unit, e.g. 150 for an onion or 3 for a garlic clove"),
+          .describe("Grams per one stock unit, e.g. 150 for an onion or 3 for a garlic clove"),
+        grams_per: z
+          .record(z.string().min(1).max(16), z.number().positive().max(100_000))
+          .optional()
+          .describe(
+            "Grams for one of another unit, e.g. { cup: 120, tbsp: 8 } for flour. This is what lets a gram-stocked ingredient be measured in cups.",
+          ),
       },
     },
-    async ({ name, stock_unit, category, grams_per_unit }) => {
+    async ({ name, stock_unit, category, grams_per_unit, grams_per }) => {
       let unit: UnitCode;
       try {
         unit = assertUnitCode(stock_unit);
       } catch {
         return text({ error: `Unknown unit: ${stock_unit}` });
       }
+
+      const gramsPer: Record<string, number> = {};
+      for (const [hintUnit, grams] of Object.entries(grams_per ?? {})) {
+        if (!isUnitCode(hintUnit)) return text({ error: `Unknown unit: ${hintUnit}` });
+        gramsPer[hintUnit] = grams;
+      }
+      if (grams_per_unit !== undefined) gramsPer[unit] = grams_per_unit;
 
       const slug = slugify(name);
       if (slug === "") return text({ error: "That name has no letters or numbers." });
@@ -400,6 +415,7 @@ export function buildLarderServer(userId: string): McpServer {
           name: ingredients.name,
           stockUnit: ingredients.stockUnit,
           category: categories.name,
+          gramsPer: ingredients.gramsPer,
         })
         .from(ingredients)
         .innerJoin(categories, eq(ingredients.categoryId, categories.id))
@@ -411,6 +427,7 @@ export function buildLarderServer(userId: string): McpServer {
           name: existing.name,
           stock_unit: existing.stockUnit,
           category: existing.category,
+          grams_per: existing.gramsPer ?? null,
           existed: true,
         });
       }
@@ -424,9 +441,13 @@ export function buildLarderServer(userId: string): McpServer {
           slug,
           categoryId: chosen.id,
           stockUnit: unit,
-          gramsPer: grams_per_unit !== undefined ? { each: grams_per_unit } : null,
+          gramsPer: Object.keys(gramsPer).length > 0 ? gramsPer : null,
           shelfLifeDays:
-            chosen.slug === "frozen" ? 180 : chosen.slug === "dry" || chosen.slug === "tins" ? 730 : 7,
+            chosen.slug === "frozen"
+              ? 180
+              : chosen.slug === "dry" || chosen.slug === "tins"
+                ? 730
+                : 7,
         })
         .returning();
 
@@ -510,7 +531,9 @@ export function buildLarderServer(userId: string): McpServer {
             gramsPer: item.gramsPer ?? undefined,
           });
         } catch {
-          conversionErrors.push(`${item.name}: ${line.unit} does not convert to ${item.stockUnit}`);
+          conversionErrors.push(
+            `${item.name}: ${line.unit} does not convert to ${item.stockUnit}. Set grams per ${line.unit} with create_ingredient or ask the human.`,
+          );
           continue;
         }
 

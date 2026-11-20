@@ -2,7 +2,7 @@
 
 import { type FormEvent, useState, useTransition } from "react";
 import { adjustStock } from "@/actions/stock";
-import { siblingUnits, type UnitCode } from "@/domain/units";
+import { baseUnitFor, entryUnits, type UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
 import { IngredientPicker } from "./ingredient-picker";
 
@@ -24,7 +24,7 @@ export function AddStockSheet({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const units = selected ? siblingUnits(selected.stockUnit) : ["g"];
+  const units = selected ? entryUnits(selected) : ["g"];
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -61,7 +61,9 @@ export function AddStockSheet({
         <div className="mb-4 flex items-start justify-between gap-4">
           <div>
             <h2 className="text-lg font-semibold">Add to pantry</h2>
-            <p className="text-sm text-neutral-500">New ingredients can be created from the search.</p>
+            <p className="text-sm text-neutral-500">
+              New ingredients can be created from the search.
+            </p>
           </div>
           <button
             type="button"
@@ -73,7 +75,7 @@ export function AddStockSheet({
         </div>
 
         <form onSubmit={submit} className="space-y-3">
-          <label className="block space-y-1 text-sm">
+          <div className="block space-y-1 text-sm">
             <span className="font-medium">Ingredient</span>
             <IngredientPicker
               options={catalogue}
@@ -83,11 +85,11 @@ export function AddStockSheet({
                   current.some((item) => item.id === option.id) ? current : [...current, option],
                 );
                 setSelected(option);
-                setUnit(siblingUnits(option.stockUnit)[0] ?? "g");
+                setUnit(baseUnitFor(option.stockUnit));
                 setError(null);
               }}
             />
-          </label>
+          </div>
 
           <div className="grid grid-cols-[1fr_7rem] gap-2">
             <label className="block space-y-1 text-sm">

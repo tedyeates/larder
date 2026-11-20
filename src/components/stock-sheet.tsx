@@ -2,7 +2,7 @@
 
 import { type FormEvent, useState, useTransition } from "react";
 import { adjustStock } from "@/actions/stock";
-import { siblingUnits, type UnitCode } from "@/domain/units";
+import { entryUnits, type UnitCode } from "@/domain/units";
 import type { PantryRow } from "@/lib/pantry";
 
 type Mode = "add" | "use" | "discard";
@@ -24,7 +24,7 @@ export function StockSheet({ row, onClose }: { row: PantryRow; onClose: () => vo
   const [unit, setUnit] = useState<UnitCode>(row.stockUnit);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
-  const units = siblingUnits(row.stockUnit);
+  const units = entryUnits(row);
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

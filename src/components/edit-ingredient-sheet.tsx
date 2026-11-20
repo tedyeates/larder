@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { updateIngredientCategory, updateIngredientUnit } from "@/actions/ingredients";
-import { type UnitCode, siblingUnits } from "@/domain/units";
+import { type UnitCode, unitFamily } from "@/domain/units";
 import type { PantryRow } from "@/lib/pantry";
 import { CategoryPicker } from "./category-picker";
 
@@ -36,15 +36,59 @@ export function EditIngredientSheet({
   const router = useRouter();
   const [unit, setUnit] = useState<UnitCode>(row.stockUnit);
   const [category, setCategory] = useState(row.category);
-  const [grams, setGrams] = useState("");
+  const [hints, setHints] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      Object.entries(row.gramsPer ?? {}).map(([hintUnit, grams]) => [hintUnit, String(grams)]),
+    ),
+  );
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
 
   const changing = unit !== row.stockUnit;
-  const needsWeight = changing && siblingUnits(row.stockUnit).length === 1;
+  const family = unitFamily(unit);
+
+  // The weights that make cross-family recipe units (a cup of flour, grams of
+  // garlic) resolvable. Mass needs spoon and cup weights; volume needs density.
+  function weightUnitsFor(code: UnitCode): UnitCode[] {
+    const codeFamily = unitFamily(code);
+    if (codeFamily === "mass") return ["tsp", "tbsp", "cup"];
+    if (codeFamily === "volume") return ["ml", "tbsp", "cup"];
+    return [code];
+  }
+
+  // While changing units, keep the old family's weights visible too: converting
+  // "each" into grams needs the per-piece weight, not a cup weight.
+  const weightUnits = [
+    ...new Set([...weightUnitsFor(unit), ...(changing ? weightUnitsFor(row.stockUnit) : [])]),
+  ];
+  const weightHelp =
+    family === "mass"
+      ? "Used when a recipe measures this by the cup or spoon."
+      : family === "volume"
+        ? "Weights that let a recipe measure this in grams."
+        : "Used when a recipe weighs this in grams instead of counting it.";
 
   function save() {
     setError(null);
+
+    const hintChanges: Record<string, number | null> = {};
+    for (const hintUnit of weightUnits) {
+      const typed = hints[hintUnit]?.trim() ?? "";
+      const existing = row.gramsPer?.[hintUnit];
+
+      if (typed === "") {
+        if (existing !== undefined) hintChanges[hintUnit] = null;
+        continue;
+      }
+
+      const grams = Number(typed);
+      if (!Number.isFinite(grams) || grams <= 0) {
+        setError(`Grams per ${hintUnit} must be a positive number.`);
+        return;
+      }
+      if (grams !== existing) hintChanges[hintUnit] = grams;
+    }
+
     startTransition(async () => {
       if (category.trim() !== "" && category.trim() !== row.category) {
         const moved = await updateIngredientCategory({
@@ -57,11 +101,11 @@ export function EditIngredientSheet({
         }
       }
 
-      if (changing || grams.trim() !== "") {
+      if (changing || Object.keys(hintChanges).length > 0) {
         const result = await updateIngredientUnit({
           ingredientId: row.id,
           stockUnit: unit,
-          gramsPerUnit: grams.trim() === "" ? undefined : Number(grams),
+          hints: hintChanges,
         });
         if (result.error) {
           setError(result.error);
@@ -124,23 +168,35 @@ export function EditIngredientSheet({
           </select>
         </label>
 
-        {(changing || grams !== "") && (
-          <label className="block space-y-1 text-sm">
-            <span className="font-medium">Grams per {unit}</span>
-            <input
-              type="number"
-              min="0.1"
-              step="any"
-              value={grams}
-              onChange={(event) => setGrams(event.target.value)}
-              placeholder={needsWeight ? "e.g. 10" : "optional"}
-              className="w-full rounded-lg border border-neutral-300 px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900"
-            />
-            <span className="block text-xs text-neutral-500">
-              Only needed when the old and new units can&apos;t be compared directly. Converting
-              updates every existing stock entry, not just the label.
-            </span>
-          </label>
+        <div className="space-y-1 text-sm">
+          <span className="font-medium">Recipe measures</span>
+          <div className="flex flex-wrap gap-2">
+            {weightUnits.map((hintUnit) => (
+              <label key={hintUnit} className="min-w-20 flex-1 space-y-1 text-xs">
+                <span className="block text-neutral-500">Grams per {hintUnit}</span>
+                <input
+                  type="number"
+                  min="0.1"
+                  step="any"
+                  value={hints[hintUnit] ?? ""}
+                  onChange={(event) => {
+                    const value = event.target.value;
+                    setHints((current) => ({ ...current, [hintUnit]: value }));
+                    setError(null);
+                  }}
+                  placeholder="optional"
+                  className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+                />
+              </label>
+            ))}
+          </div>
+          <span className="block text-xs text-neutral-500">{weightHelp}</span>
+        </div>
+
+        {changing && (
+          <p className="text-xs text-neutral-500">
+            Converting updates every existing stock entry, not just the label.
+          </p>
         )}
 
         {error !== null && (

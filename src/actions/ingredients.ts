@@ -5,7 +5,12 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getDb } from "@/db";
 import { categories, ingredients, stockEntries } from "@/db/schema";
-import { assertUnitCode, convertBetweenIngredients, type UnitCode } from "@/domain/units";
+import {
+  assertUnitCode,
+  convertBetweenIngredients,
+  isUnitCode,
+  type UnitCode,
+} from "@/domain/units";
 import { auth } from "@/lib/auth/server";
 import { ensureCategory } from "@/lib/categories";
 import { slugify } from "@/lib/slug";
@@ -25,6 +30,7 @@ export interface CreatedIngredient {
   readonly category: string;
   readonly categoryId: string;
   readonly aliases: string[];
+  readonly gramsPer?: Partial<Record<UnitCode, number>>;
 }
 
 export interface UpdateUnitResult {
@@ -74,10 +80,18 @@ export async function updateIngredientCategory(raw: unknown): Promise<UpdateCate
   return { message: `Moved to ${category.name}.` };
 }
 
-const unitChangeInput = z.object({  ingredientId: z.uuid(),
+const unitChangeInput = z.object({
+  ingredientId: z.uuid(),
   stockUnit: z.string().min(1).max(16),
   /** Grams per one of the new unit, when the units need a bridge. */
   gramsPerUnit: z.coerce.number().positive().max(100_000).optional(),
+  /**
+   * Extra gram weights, e.g. `{ cup: 120, tbsp: 8 }`. Null clears a weight.
+   * These are what let a gram-stocked ingredient be measured in cups or spoons.
+   */
+  hints: z
+    .record(z.string().min(1).max(16), z.union([z.number().positive().max(100_000), z.null()]))
+    .optional(),
 });
 
 /**
@@ -117,6 +131,14 @@ export async function updateIngredientUnit(raw: unknown): Promise<UpdateUnitResu
   if (parsed.data.gramsPerUnit !== undefined) {
     gramsPer[newUnit] = parsed.data.gramsPerUnit;
   }
+  for (const [unit, grams] of Object.entries(parsed.data.hints ?? {})) {
+    if (!isUnitCode(unit)) return { error: `Unknown unit: ${unit}` };
+    if (grams === null) {
+      delete gramsPer[unit];
+    } else {
+      gramsPer[unit] = grams;
+    }
+  }
 
   const from = {
     id: ingredient.id,
@@ -150,7 +172,7 @@ export async function updateIngredientUnit(raw: unknown): Promise<UpdateUnitResu
     }));
   } catch {
     return {
-      error: `I can't convert ${ingredient.stockUnit} to ${newUnit} without a weight. Enter how many grams one ${newUnit} is.`,
+      error: `I can't convert ${ingredient.stockUnit} to ${newUnit} without a weight. Add the recipe weights for ${ingredient.name} first.`,
     };
   }
 
@@ -224,6 +246,7 @@ export async function createIngredient(raw: unknown): Promise<CreateIngredientRe
         category: existingCategory?.name ?? "Other",
         categoryId: existing.categoryId,
         aliases: existing.aliases,
+        gramsPer: (existing.gramsPer as Partial<Record<UnitCode, number>> | null) ?? undefined,
       },
     };
   }
@@ -237,7 +260,11 @@ export async function createIngredient(raw: unknown): Promise<CreateIngredientRe
       ? { each: parsed.data.gramsPerUnit }
       : null;
   const shelfLife =
-    category.slug === "frozen" ? 180 : category.slug === "tins" || category.slug === "dry" ? 730 : 7;
+    category.slug === "frozen"
+      ? 180
+      : category.slug === "tins" || category.slug === "dry"
+        ? 730
+        : 7;
 
   const [created] = await db
     .insert(ingredients)
@@ -264,6 +291,7 @@ export async function createIngredient(raw: unknown): Promise<CreateIngredientRe
       category: category.name,
       categoryId: category.id,
       aliases: created.aliases,
+      gramsPer: (created.gramsPer as Partial<Record<UnitCode, number>> | null) ?? undefined,
     },
   };
 }

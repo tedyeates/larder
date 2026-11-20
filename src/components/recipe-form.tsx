@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { type FormEvent, useRef, useState, useTransition } from "react";
 import { createRecipe, updateRecipe } from "@/actions/recipes";
-import { siblingUnits, type UnitCode } from "@/domain/units";
+import { baseUnitFor, entryUnits, type UnitCode } from "@/domain/units";
 import type { IngredientOption } from "@/lib/catalogue";
 import { IngredientPicker } from "./ingredient-picker";
 
@@ -138,7 +138,9 @@ export function RecipeForm({
         <h2 className="text-sm font-medium">Ingredients</h2>
         {lines.map((line) => {
           const selected = catalogue.find((item) => item.id === line.ingredientId);
-          const units = selected ? siblingUnits(selected.stockUnit) : ["g"];
+          const units = selected ? entryUnits(selected) : ["g"];
+          // Keep the saved unit selectable even if the ingredient's hints changed.
+          const unitOptions = units.includes(line.unit) ? units : [line.unit, ...units];
           return (
             <div key={line.key} className="grid gap-2 sm:grid-cols-[1fr_6rem_5rem_auto]">
               <IngredientPicker
@@ -150,7 +152,7 @@ export function RecipeForm({
                   );
                   updateLine(line.key, {
                     ingredientId: option.id,
-                    unit: siblingUnits(option.stockUnit)[0] ?? "g",
+                    unit: baseUnitFor(option.stockUnit),
                   });
                 }}
               />
@@ -172,7 +174,7 @@ export function RecipeForm({
                 aria-label="Unit"
                 className="rounded-lg border border-neutral-300 px-2 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
               >
-                {units.map((unit) => (
+                {unitOptions.map((unit) => (
                   <option key={unit} value={unit}>
                     {unit}
                   </option>

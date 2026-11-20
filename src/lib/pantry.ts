@@ -2,7 +2,7 @@ import { asc, eq } from "drizzle-orm";
 import { getDb } from "@/db";
 import { categories, ingredients, stockEntries } from "@/db/schema";
 import { daysBetween, todayIso } from "@/domain/dates";
-import { type StockEntry, lastRanOutAt } from "@/domain/ledger";
+import { lastRanOutAt, type StockEntry } from "@/domain/ledger";
 import { pantryStatus, statusLabel, statusRank } from "@/domain/status";
 import { formatQuantity, type UnitCode } from "@/domain/units";
 
@@ -20,6 +20,8 @@ export interface PantryRow {
   readonly display: string;
   /** The ingredient's stock unit, so the adjust sheet can offer sensible units. */
   readonly stockUnit: UnitCode;
+  /** Gram weights for units a recipe might use, e.g. `{ cup: 120 }`. */
+  readonly gramsPer?: Partial<Record<UnitCode, number>>;
   readonly earliestBestBefore: string | null;
   readonly useBy: string | null;
   readonly daysUntilExpiry: number | null;
@@ -39,7 +41,10 @@ export interface PantryRow {
  * One row per ingredient. Quantities come from the ledger; dates come from the
  * lots that still hold stock. Nothing is cached in a column.
  */
-export async function getPantryRows(userId: string, today: string = todayIso()): Promise<PantryRow[]> {
+export async function getPantryRows(
+  userId: string,
+  today: string = todayIso(),
+): Promise<PantryRow[]> {
   const db = getDb();
 
   const [catalogue, entries] = await Promise.all([
@@ -112,6 +117,7 @@ export async function getPantryRows(userId: string, today: string = todayIso()):
         gramsPer: item.gramsPer ?? undefined,
       }),
       stockUnit: item.stockUnit as UnitCode,
+      gramsPer: (item.gramsPer as Partial<Record<UnitCode, number>> | null) ?? undefined,
       earliestBestBefore: status.earliestBestBefore,
       useBy,
       daysUntilExpiry: status.daysUntilExpiry,
