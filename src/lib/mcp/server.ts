@@ -15,7 +15,14 @@ import {
 import { daysBetween } from "@/domain/dates";
 import { balance } from "@/domain/ledger";
 import { diffAgainstPantry, planRequirements } from "@/domain/plan";
-import { assertUnitCode, isUnitCode, toBase, type UnitCode } from "@/domain/units";
+import {
+  assertUnitCode,
+  entryUnits,
+  isUnitCode,
+  parseUnit,
+  toBase,
+  type UnitCode,
+} from "@/domain/units";
 import { ensureCategory } from "@/lib/categories";
 import { getPantryRows } from "@/lib/pantry";
 import { currentWeek, ensurePlan, listLeftovers, loadWeek } from "@/lib/plan";
@@ -25,8 +32,11 @@ const INSTRUCTIONS = `Larder is a deterministic pantry and meal-planning ledger.
 
 Rules that matter:
 - Balances are sums over an append-only ledger. Never invent or adjust a number.
-- Quantities live in each ingredient's stock unit. If a recipe unit can't be
-  converted, say so and ask; never guess a weight or a volume.
+- Quantities live in each ingredient's stock unit. Recipe units may be written as
+  cups, tablespoons, teaspoons, grams, etc.; common spellings are normalised. If
+  a unit still can't be converted, say so and ask; never guess a weight or volume.
+- create_ingredient is idempotent and merges grams_per into an existing item, so
+  use it to fill missing cup/spoon/piece weights before saving a recipe.
 - Cooking deducts oldest-first. Plans are proposals until the human cooks.
 - Leftovers are already-cooked portions: assigning one to a meal deducts nothing.
 - Prefer stock that is close to its best-before date.
@@ -356,6 +366,12 @@ export function buildLarderServer(userId: string): McpServer {
           category: row.category,
           aliases: row.aliases,
           grams_per: row.gramsPer ?? null,
+          measure_units: entryUnits({
+            id: row.id,
+            name: row.name,
+            stockUnit: row.stockUnit as UnitCode,
+            gramsPer: (row.gramsPer as Partial<Record<UnitCode, number>> | null) ?? undefined,
+          }),
         })),
       );
     },
@@ -366,7 +382,7 @@ export function buildLarderServer(userId: string): McpServer {
     {
       title: "Create an ingredient",
       description:
-        "Add one ingredient to the catalogue. Idempotent by name. Choose the unit you would actually count it in at home, and give gram weights for the units a recipe measures it in (cups, spoons, pieces).",
+        "Add one ingredient to the catalogue. Idempotent by name: if it already exists, the gram weights you pass are merged into it, so this also repairs a hintless ingredient. Choose the unit you would actually count it in at home, and give gram weights for the units a recipe measures it in (cups, spoons, pieces).",
       inputSchema: {
         name: z.string().min(1).max(80),
         stock_unit: z.string().min(1).max(16),
@@ -386,7 +402,7 @@ export function buildLarderServer(userId: string): McpServer {
           .record(z.string().min(1).max(16), z.number().positive().max(100_000))
           .optional()
           .describe(
-            "Grams for one of another unit, e.g. { cup: 120, tbsp: 8 } for flour. This is what lets a gram-stocked ingredient be measured in cups.",
+            "Grams for one of another unit, e.g. { cup: 120, tbsp: 8 } for flour. This is what lets a gram-stocked ingredient be measured in cups. Passing this for an existing ingredient updates its weights.",
           ),
       },
     },
@@ -399,11 +415,11 @@ export function buildLarderServer(userId: string): McpServer {
       }
 
       const gramsPer: Record<string, number> = {};
-      for (const [hintUnit, grams] of Object.entries(grams_per ?? {})) {
-        if (!isUnitCode(hintUnit)) return text({ error: `Unknown unit: ${hintUnit}` });
+      for (const [writtenUnit, grams] of Object.entries(grams_per ?? {})) {
+        const hintUnit = parseUnit(writtenUnit);
+        if (hintUnit === null) return text({ error: `Unknown unit: ${writtenUnit}` });
         gramsPer[hintUnit] = grams;
       }
-      if (grams_per_unit !== undefined) gramsPer[unit] = grams_per_unit;
 
       const slug = slugify(name);
       if (slug === "") return text({ error: "That name has no letters or numbers." });
@@ -422,15 +438,32 @@ export function buildLarderServer(userId: string): McpServer {
         .where(and(eq(ingredients.userId, userId), eq(ingredients.slug, slug)))
         .limit(1);
       if (existing) {
+        const merged: Record<string, number> = {
+          ...(existing.gramsPer ?? {}),
+          ...gramsPer,
+        };
+        if (grams_per_unit !== undefined) merged[existing.stockUnit] = grams_per_unit;
+
+        const changed = JSON.stringify(merged) !== JSON.stringify(existing.gramsPer ?? {});
+        if (changed) {
+          await db
+            .update(ingredients)
+            .set({ gramsPer: merged })
+            .where(eq(ingredients.id, existing.id));
+        }
+
         return text({
           id: existing.id,
           name: existing.name,
           stock_unit: existing.stockUnit,
           category: existing.category,
-          grams_per: existing.gramsPer ?? null,
+          grams_per: changed ? merged : (existing.gramsPer ?? null),
           existed: true,
+          updated: changed,
         });
       }
+
+      if (grams_per_unit !== undefined) gramsPer[unit] = grams_per_unit;
 
       const chosen = await ensureCategory(userId, category ?? "Other");
       const [created] = await db
@@ -477,7 +510,7 @@ export function buildLarderServer(userId: string): McpServer {
     {
       title: "Save a recipe",
       description:
-        "Save a recipe the human has approved. Every line must resolve to a catalogue ingredient; unresolved names come back so you can ask or create them. Units must convert to the ingredient's stock unit.",
+        "Save a recipe the human has approved. Every line must resolve to a catalogue ingredient; unresolved names come back so you can ask or create them. Units may be written as cups, tablespoons, grams, etc.; common spellings are normalised and must convert to the ingredient's stock unit.",
       inputSchema: {
         title: z.string().min(1).max(120),
         servings: z.number().int().min(1).max(24),
@@ -505,7 +538,7 @@ export function buildLarderServer(userId: string): McpServer {
       const resolved: {
         item: (typeof catalogue)[number];
         quantity: number;
-        unit: string;
+        unit: UnitCode;
         note?: string;
         optional?: boolean;
       }[] = [];
@@ -523,8 +556,16 @@ export function buildLarderServer(userId: string): McpServer {
           continue;
         }
 
+        const unit = parseUnit(line.unit);
+        if (unit === null) {
+          conversionErrors.push(
+            `${item.name}: "${line.unit}" is not a unit Larder knows. Use a unit such as g, kg, ml, l, tsp, tbsp, cup, oz, lb, fl oz, each, clove, slice, head, bunch, can or pack.`,
+          );
+          continue;
+        }
+
         try {
-          toBase(line.quantity, assertUnitCode(line.unit), {
+          toBase(line.quantity, unit, {
             id: item.id,
             name: item.name,
             stockUnit: item.stockUnit as UnitCode,
@@ -532,7 +573,7 @@ export function buildLarderServer(userId: string): McpServer {
           });
         } catch {
           conversionErrors.push(
-            `${item.name}: ${line.unit} does not convert to ${item.stockUnit}. Set grams per ${line.unit} with create_ingredient or ask the human.`,
+            `${item.name}: ${unit} does not convert to ${item.stockUnit}. Set grams per ${unit} with create_ingredient or ask the human.`,
           );
           continue;
         }
@@ -540,7 +581,7 @@ export function buildLarderServer(userId: string): McpServer {
         resolved.push({
           item,
           quantity: line.quantity,
-          unit: line.unit,
+          unit,
           note: line.note,
           optional: line.optional,
         });

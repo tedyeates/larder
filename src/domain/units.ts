@@ -47,7 +47,91 @@ export const UNITS = {
   sprig: { family: "count", toBase: 1, label: "sprig", plural: "sprigs" },
   can: { family: "count", toBase: 1, label: "can", plural: "cans" },
   pack: { family: "count", toBase: 1, label: "pack", plural: "packs" },
+  ball: { family: "count", toBase: 1, label: "ball", plural: "balls" },
+  block: { family: "count", toBase: 1, label: "block", plural: "blocks" },
+  square: { family: "count", toBase: 1, label: "square", plural: "squares" },
+  scoop: { family: "count", toBase: 1, label: "scoop", plural: "scoops" },
+  handful: { family: "count", toBase: 1, label: "handful", plural: "handfuls" },
+  sheet: { family: "count", toBase: 1, label: "sheet", plural: "sheets" },
+  nest: { family: "count", toBase: 1, label: "nest", plural: "nests" },
 } as const satisfies Record<string, UnitDef>;
+
+/**
+ * Spellings an agent or an imported recipe may use for a unit. Canonical codes
+ * themselves are always accepted; this only adds the words around them.
+ */
+const UNIT_ALIASES: Readonly<Record<string, UnitCode>> = {
+  gram: "g",
+  grams: "g",
+  gramme: "g",
+  grammes: "g",
+  kilogram: "kg",
+  kilograms: "kg",
+  kilo: "kg",
+  kilos: "kg",
+  ounce: "oz",
+  ounces: "oz",
+  pound: "lb",
+  pounds: "lb",
+  lbs: "lb",
+  millilitre: "ml",
+  millilitres: "ml",
+  milliliter: "ml",
+  milliliters: "ml",
+  cc: "ml",
+  litre: "l",
+  litres: "l",
+  liter: "l",
+  liters: "l",
+  teaspoon: "tsp",
+  teaspoons: "tsp",
+  tsps: "tsp",
+  tspn: "tsp",
+  tablespoon: "tbsp",
+  tablespoons: "tbsp",
+  tbsps: "tbsp",
+  tbs: "tbsp",
+  tblsp: "tbsp",
+  tblspn: "tbsp",
+  cups: "cup",
+  "fl oz": "floz",
+  floz: "floz",
+  "fl. oz": "floz",
+  "fluid ounce": "floz",
+  "fluid ounces": "floz",
+  piece: "each",
+  pieces: "each",
+  pc: "each",
+  pcs: "each",
+  unit: "each",
+  units: "each",
+  ea: "each",
+  whole: "each",
+  cloves: "clove",
+  slices: "slice",
+  rashers: "rasher",
+  fillets: "fillet",
+  filet: "fillet",
+  filets: "fillet",
+  heads: "head",
+  bunches: "bunch",
+  sprigs: "sprig",
+  cans: "can",
+  tin: "can",
+  tins: "can",
+  packs: "pack",
+  packet: "pack",
+  packets: "pack",
+  package: "pack",
+  packages: "pack",
+  balls: "ball",
+  blocks: "block",
+  squares: "square",
+  scoops: "scoop",
+  handfuls: "handful",
+  sheets: "sheet",
+  nests: "nest",
+};
 
 export type UnitCode = keyof typeof UNITS;
 
@@ -82,9 +166,21 @@ export function isUnitCode(value: string): value is UnitCode {
   return Object.hasOwn(UNITS, value);
 }
 
+/**
+ * Read a unit the way a person or an agent wrote it: `cups`, `Tablespoons`,
+ * `fl. oz.` and `grams` all resolve to their canonical code. Null means Larder
+ * does not know the unit; it never guesses one.
+ */
+export function parseUnit(value: string): UnitCode | null {
+  const key = value.trim().toLowerCase().replace(/\s+/g, " ").replace(/\.+$/, "");
+  if (isUnitCode(key)) return key;
+  return UNIT_ALIASES[key] ?? null;
+}
+
 export function assertUnitCode(value: string): UnitCode {
-  if (!isUnitCode(value)) throw new Error(`Unknown unit: ${value}`);
-  return value;
+  const unit = parseUnit(value);
+  if (unit === null) throw new Error(`Unknown unit: ${value}`);
+  return unit;
 }
 
 export function unitFamily(unit: UnitCode): UnitFamily {

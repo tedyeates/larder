@@ -30,4 +30,11 @@ export const CREATE_UNITS: readonly UnitCode[] = [
   "fillet",
   "rasher",
   "sprig",
+  "ball",
+  "block",
+  "square",
+  "scoop",
+  "handful",
+  "sheet",
+  "nest",
 ];

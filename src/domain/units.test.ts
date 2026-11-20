@@ -8,6 +8,7 @@ import {
   formatQuantity,
   fromBase,
   type IngredientUnits,
+  parseUnit,
   roundAmount,
   toBase,
 } from "./units";
@@ -120,6 +121,24 @@ describe("fromBase", () => {
   it("reports convertibility without throwing", () => {
     expect(canConvert("cup", "g", flour)).toBe(true);
     expect(canConvert("cup", "g", rice)).toBe(false);
+  });
+});
+
+describe("parseUnit", () => {
+  it("accepts canonical codes and common recipe spellings", () => {
+    expect(parseUnit("cup")).toBe("cup");
+    expect(parseUnit("cups")).toBe("cup");
+    expect(parseUnit("Tablespoons")).toBe("tbsp");
+    expect(parseUnit("teaspoons")).toBe("tsp");
+    expect(parseUnit("grams")).toBe("g");
+    expect(parseUnit("fl. oz.")).toBe("floz");
+    expect(parseUnit("tins")).toBe("can");
+    expect(parseUnit("handfuls")).toBe("handful");
+  });
+
+  it("refuses a unit it does not know", () => {
+    expect(parseUnit("splash")).toBeNull();
+    expect(parseUnit("")).toBeNull();
   });
 });
 

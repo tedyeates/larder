@@ -64,8 +64,8 @@ get 401, the token is wrong. If you get 503, the server has no token configured.
 - \`get_recipe({ recipe_id })\`
 - \`propose_shopping_list({ week_start? })\`
 - \`list_ingredients({ query?, limit? })\`
-- \`create_ingredient({ name, stock_unit, category?, grams_per_unit?, grams_per? })\`
-- \`create_recipe({ title, servings, source_url?, steps?, ingredients[] })\`
+- \`create_ingredient({ name, stock_unit, category?, grams_per_unit?, grams_per? })\` — idempotent; passing \`grams_per\` repairs an existing ingredient
+- \`create_recipe({ title, servings, source_url?, steps?, ingredients[] })\` — recipe units may be written as \`cups\`, \`tablespoons\`, \`grams\`, etc.
 - \`create_meal_plan({ week_start, note?, entries[] })\` — saves a **draft**
 
 Sourcing from the web: if the library has nothing suitable, find a recipe,

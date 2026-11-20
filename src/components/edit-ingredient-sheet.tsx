@@ -22,6 +22,13 @@ const UNIT_OPTIONS: readonly UnitCode[] = [
   "sprig",
   "can",
   "pack",
+  "ball",
+  "block",
+  "square",
+  "scoop",
+  "handful",
+  "sheet",
+  "nest",
 ];
 
 export function EditIngredientSheet({
