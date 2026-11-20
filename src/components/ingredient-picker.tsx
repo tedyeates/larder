@@ -40,7 +40,11 @@ export function IngredientPicker({
   useEffect(() => {
     function onPointerDown(event: PointerEvent) {
       const node = event.target as Node | null;
-      if (containerRef.current && node && !containerRef.current.contains(node)) {
+      if (!node) return;
+      // Nested pickers (the category combobox) portal their menu to the body so
+      // the sheet can't clip it; that menu is still part of this picker.
+      if (node instanceof Element && node.closest("[data-floating-menu]")) return;
+      if (containerRef.current && !containerRef.current.contains(node)) {
         setOpen(false);
       }
     }
