@@ -29,16 +29,23 @@ Merge into \`opencode.json\` at the project or user level:
 
 \`\`\`json
 {
+  "$schema": "https://opencode.ai/config.json",
   "mcp": {
-    "larder": {
-      "type": "remote",
-      "url": "${base}/api/mcp",
-      "headers": { "Authorization": "Bearer <LARDER_MCP_TOKEN>" },
-      "enabled": true
+    "servers": {
+      "larder": {
+        "type": "remote",
+        "url": "${base}/api/mcp",
+        "headers": { "Authorization": "Bearer <LARDER_MCP_TOKEN>" },
+        "enabled": true
+      }
     }
   }
 }
 \`\`\`
+
+If the file already has other servers, add \`larder\` inside the existing
+\`mcp.servers\` object — do not replace it. Use the deployed URL, not
+\`http://localhost:3000\`, unless you are running Larder locally.
 
 The token is never printed by this document. On the machine hosting Larder it is
 in \`.env.local\`; in production it is an environment variable set in the host.
