@@ -19,6 +19,7 @@ export interface RecipeFormInitial {
   readonly title: string;
   readonly servings: number;
   readonly steps: readonly string[];
+  readonly aiNotes: string;
   readonly lines: readonly {
     ingredientId: string | null;
     quantity: number | null;
@@ -38,6 +39,7 @@ export function RecipeForm({
   const [title, setTitle] = useState(initial?.title ?? "");
   const [servings, setServings] = useState(String(initial?.servings ?? 2));
   const [steps, setSteps] = useState(initial?.steps.join("\n") ?? "");
+  const [aiNotes, setAiNotes] = useState(initial?.aiNotes ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const [catalogue, setCatalogue] = useState<IngredientOption[]>([...ingredients]);
@@ -93,6 +95,7 @@ export function RecipeForm({
     formData.set("title", title);
     formData.set("servings", servings);
     formData.set("steps", steps);
+    formData.set("aiNotes", aiNotes);
     formData.set("lines", JSON.stringify(payload));
     if (initial) formData.set("recipeId", initial.recipeId);
 
@@ -201,6 +204,21 @@ export function RecipeForm({
           + Add ingredient
         </button>
       </section>
+
+      <label className="block space-y-1 text-sm">
+        <span className="font-medium">AI notes</span>
+        <span className="block text-xs text-neutral-500">
+          Planning instructions for an agent, e.g. “serve with a salad”. Shown in the recipe, but
+          not part of the method.
+        </span>
+        <textarea
+          rows={3}
+          value={aiNotes}
+          onChange={(event) => setAiNotes(event.target.value)}
+          placeholder="Serve with a salad. This recipe is a main, so plan a second dish for the same meal."
+          className="w-full rounded-lg border border-neutral-300 px-3 py-2 text-sm dark:border-neutral-700 dark:bg-neutral-900"
+        />
+      </label>
 
       <label className="block space-y-1 text-sm">
         <span className="font-medium">Steps</span>

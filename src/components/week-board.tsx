@@ -184,6 +184,54 @@ export function WeekBoard({
     });
   }
 
+  function renderEntry(entry: PlanEntryView) {
+    return (
+      <div className="space-y-2">
+        <div className="flex items-start justify-between gap-2">
+          <p className="text-sm font-medium">
+            {entry.title}
+            <span className="ml-2 text-xs font-normal text-neutral-500">
+              {entry.portions} {entry.kind === "leftover" ? "portion(s)" : "serving(s)"}
+            </span>
+          </p>
+          {entry.kind === "leftover" && (
+            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+              {entry.leftoverId === null ? "planned leftover" : "leftover"}
+            </span>
+          )}
+        </div>
+
+        <div className="flex flex-wrap gap-2">
+          {entry.status === "planned" && entry.kind === "leftover" && entry.leftoverId === null && (
+            <span className="text-xs text-neutral-500">waiting for the cook</span>
+          )}
+          {entry.status === "planned" &&
+            (entry.kind !== "leftover" || entry.leftoverId !== null) && (
+              <button
+                type="button"
+                onClick={() => cook(entry)}
+                disabled={pending}
+                className="rounded-md bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
+              >
+                {entry.kind === "leftover" ? "Eat" : "Cook"}
+              </button>
+            )}
+          {entry.status !== "planned" && (
+            <span className="text-xs text-neutral-500 capitalize">{entry.status}</span>
+          )}
+          <button
+            type="button"
+            onClick={() => remove(entry)}
+            disabled={pending}
+            className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-500 disabled:opacity-50 dark:border-neutral-700"
+          >
+            Remove
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4">
       {status === "draft" && (
@@ -216,7 +264,7 @@ export function WeekBoard({
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-sm text-neutral-500">
-          {entries.length} meal(s) planned · {leftovers.length} leftover(s) waiting
+          {entries.length} dish(es) planned · {leftovers.length} leftover(s) waiting
         </p>
         <button
           type="button"
@@ -269,15 +317,18 @@ export function WeekBoard({
             </h2>
             <div className="grid gap-2 sm:grid-cols-2">
               {(["lunch", "dinner"] as const).map((slot) => {
-                const entry = entries.find((row) => row.day === day && row.slot === slot);
+                const slotEntries = entries.filter((row) => row.day === day && row.slot === slot);
                 return (
                   <div
                     key={slot}
                     className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-800"
                   >
-                    <p className="mb-1 text-xs text-neutral-500 capitalize">{slot}</p>
+                    <p className="mb-1 text-xs text-neutral-500 capitalize">
+                      {slot}
+                      {slotEntries.length > 1 ? ` · ${slotEntries.length} dishes` : ""}
+                    </p>
 
-                    {entry === undefined ? (
+                    {slotEntries.length === 0 ? (
                       <button
                         type="button"
                         onClick={() => openAdd(day, slot)}
@@ -287,52 +338,20 @@ export function WeekBoard({
                       </button>
                     ) : (
                       <div className="space-y-2">
-                        <div className="flex items-start justify-between gap-2">
-                          <p className="text-sm font-medium">
-                            {entry.title}
-                            <span className="ml-2 text-xs font-normal text-neutral-500">
-                              {entry.portions}{" "}
-                              {entry.kind === "leftover" ? "portion(s)" : "serving(s)"}
-                            </span>
-                          </p>
-                          {entry.kind === "leftover" && (
-                            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
-                              {entry.leftoverId === null ? "planned leftover" : "leftover"}
-                            </span>
-                          )}
+                        <div className="space-y-2 divide-y divide-neutral-200 dark:divide-neutral-800">
+                          {slotEntries.map((entry) => (
+                            <div key={entry.id} className="pt-2 first:pt-0">
+                              {renderEntry(entry)}
+                            </div>
+                          ))}
                         </div>
-
-                        <div className="flex flex-wrap gap-2">
-                          {entry.status === "planned" &&
-                            entry.kind === "leftover" &&
-                            entry.leftoverId === null && (
-                              <span className="text-xs text-neutral-500">waiting for the cook</span>
-                            )}
-                          {entry.status === "planned" &&
-                            (entry.kind !== "leftover" || entry.leftoverId !== null) && (
-                              <button
-                                type="button"
-                                onClick={() => cook(entry)}
-                                disabled={pending}
-                                className="rounded-md bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
-                              >
-                                {entry.kind === "leftover" ? "Eat" : "Cook"}
-                              </button>
-                            )}
-                          {entry.status !== "planned" && (
-                            <span className="text-xs text-neutral-500 capitalize">
-                              {entry.status}
-                            </span>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => remove(entry)}
-                            disabled={pending}
-                            className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-500 disabled:opacity-50 dark:border-neutral-700"
-                          >
-                            Remove
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          onClick={() => openAdd(day, slot)}
+                          className="w-full rounded-lg border border-dashed border-neutral-300 py-1.5 text-xs text-neutral-500 hover:border-neutral-500 dark:border-neutral-700"
+                        >
+                          + Add another dish
+                        </button>
                       </div>
                     )}
                   </div>

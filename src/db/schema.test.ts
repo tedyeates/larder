@@ -128,7 +128,7 @@ describe("transactions", () => {
 });
 
 describe("constraints", () => {
-  it("refuses a second entry in the same meal-plan slot", async () => {
+  it("allows more than one dish in the same meal-plan slot", async () => {
     const plan = await db.query<{ id: string }>(
       `insert into meal_plans (user_id, week_start) values ($1, '2026-11-09') returning id`,
       [userId],
@@ -156,7 +156,26 @@ describe("constraints", () => {
          values ($1, '2026-11-10', 'dinner', $2)`,
         [planId, second.rows[0]?.id],
       ),
-    ).rejects.toThrow();
+    ).resolves.toBeDefined();
+
+    const count = await db.query<{ count: string }>(
+      `select count(*)::text as count from meal_plan_entries
+       where plan_id = $1 and day = '2026-11-10' and slot = 'dinner'`,
+      [planId],
+    );
+    expect(count.rows[0]?.count).toBe("2");
+  });
+
+  it("stores AI notes on a recipe", async () => {
+    const recipe = await db.query<{ id: string }>(
+      `insert into recipes (user_id, title, ai_notes) values ($1, 'Wings', 'Serve with a salad') returning id`,
+      [userId],
+    );
+    const result = await db.query<{ ai_notes: string }>(
+      "select ai_notes from recipes where id = $1",
+      [recipe.rows[0]?.id],
+    );
+    expect(result.rows[0]?.ai_notes).toBe("Serve with a salad");
   });
 
   it("allows a negative entry, because consumption is recorded that way", async () => {

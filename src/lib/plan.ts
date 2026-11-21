@@ -19,6 +19,8 @@ export interface PlanEntryView {
   readonly portions: number;
   readonly status: EntryStatus;
   readonly createdBy: "manual" | "agent";
+  /** Planning instructions carried by the recipe, for agents. */
+  readonly aiNotes?: string | null;
 }
 
 export interface WeekView {
@@ -54,13 +56,14 @@ export async function loadWeek(userId: string, week: string): Promise<WeekView> 
       status: mealPlanEntries.status,
       createdBy: mealPlanEntries.createdBy,
       recipeTitle: recipes.title,
+      recipeNotes: recipes.aiNotes,
       leftoverLabel: leftovers.label,
     })
     .from(mealPlanEntries)
     .leftJoin(recipes, eq(mealPlanEntries.recipeId, recipes.id))
     .leftJoin(leftovers, eq(mealPlanEntries.leftoverId, leftovers.id))
     .where(eq(mealPlanEntries.planId, plan.id))
-    .orderBy(mealPlanEntries.day, mealPlanEntries.slot);
+    .orderBy(mealPlanEntries.day, mealPlanEntries.slot, mealPlanEntries.sortOrder);
 
   return {
     week,
@@ -77,6 +80,7 @@ export async function loadWeek(userId: string, week: string): Promise<WeekView> 
       portions: row.portions,
       status: row.status,
       createdBy: row.createdBy,
+      aiNotes: row.recipeNotes,
     })),
   };
 }

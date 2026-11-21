@@ -19,6 +19,7 @@ const recipeInput = z.object({
   title: z.string().trim().min(1).max(120),
   servings: z.coerce.number().int().min(1).max(24),
   steps: z.string().max(8000).optional(),
+  aiNotes: z.string().max(4000).optional(),
   lines: z.string().min(2),
 });
 
@@ -91,6 +92,7 @@ export async function updateRecipe(formData: FormData): Promise<UpdateRecipeResu
     title: formData.get("title"),
     servings: formData.get("servings"),
     steps: formData.get("steps") ?? undefined,
+    aiNotes: formData.get("aiNotes") ?? undefined,
     lines: formData.get("lines"),
   });
   if (!parsed.success) return { error: "A recipe needs a title, servings, and ingredients." };
@@ -158,6 +160,7 @@ export async function updateRecipe(formData: FormData): Promise<UpdateRecipeResu
         title: parsed.data.title,
         servings: parsed.data.servings,
         steps,
+        aiNotes: parsed.data.aiNotes?.trim() || null,
       })
       .where(eq(recipes.id, existing.id));
 
@@ -193,6 +196,7 @@ export async function createRecipe(formData: FormData): Promise<CreateRecipeResu
     title: formData.get("title"),
     servings: formData.get("servings"),
     steps: formData.get("steps") ?? undefined,
+    aiNotes: formData.get("aiNotes") ?? undefined,
     lines: formData.get("lines"),
   });
   if (!parsed.success) return { error: "A recipe needs a title, servings, and ingredients." };
@@ -255,6 +259,7 @@ export async function createRecipe(formData: FormData): Promise<CreateRecipeResu
         title: parsed.data.title,
         servings: parsed.data.servings,
         steps,
+        aiNotes: parsed.data.aiNotes?.trim() || null,
         createdBy: "manual",
       })
       .returning({ id: recipes.id });

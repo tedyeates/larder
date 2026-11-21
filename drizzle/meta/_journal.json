@@ -43,6 +43,13 @@
       "when": 1795080135442,
       "tag": "0005_woozy_gamora",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1795262716901,
+      "tag": "0006_chief_firestar",
+      "breakpoints": true
     }
   ]
 }

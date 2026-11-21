@@ -72,8 +72,9 @@ get 401, the token is wrong. If you get 503, the server has no token configured.
 - \`propose_shopping_list({ week_start? })\`
 - \`list_ingredients({ query?, limit? })\`
 - \`create_ingredient({ name, stock_unit, category?, grams_per_unit?, grams_per? })\` — idempotent; passing \`grams_per\` repairs an existing ingredient
-- \`create_recipe({ title, servings, source_url?, steps?, ingredients[] })\` — recipe units may be written as \`cups\`, \`tablespoons\`, \`grams\`, etc.
-- \`create_meal_plan({ week_start, note?, entries[] })\` — saves a **draft**
+- \`create_recipe({ title, servings, source_url?, steps?, ai_notes?, ingredients[] })\` — recipe units may be written as \`cups\`, \`tablespoons\`, \`grams\`, etc.
+- \`update_recipe_notes({ recipe_id, ai_notes })\` — planning notes for an existing recipe
+- \`create_meal_plan({ week_start, note?, entries[] })\` — saves a **draft**; a day/slot may hold more than one dish
 
 Sourcing from the web: if the library has nothing suitable, find a recipe,
 present it with its source link, and only save it once the human agrees. Resolve

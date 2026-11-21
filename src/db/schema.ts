@@ -126,6 +126,8 @@ export const recipes = pgTable(
     prepMinutes: integer("prep_minutes"),
     cookMinutes: integer("cook_minutes"),
     steps: jsonb("steps").$type<{ text: string; timerMinutes?: number }[]>().notNull().default([]),
+    /** Planning instructions for an agent, e.g. "serve with a salad". */
+    aiNotes: text("ai_notes"),
     tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
     imageUrl: text("image_url"),
     createdBy: creator("created_by").notNull().default("manual"),
@@ -232,7 +234,7 @@ export const mealPlanEntries = pgTable(
   },
   (table) => [
     index("meal_plan_entries_plan_idx").on(table.planId, table.day, table.slot),
-    uniqueIndex("meal_plan_entries_slot_idx").on(table.planId, table.day, table.slot),
+    // A slot may hold more than one dish: a main and a side, for example.
   ],
 );
 

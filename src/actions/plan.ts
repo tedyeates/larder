@@ -36,6 +36,25 @@ const addRecipeInput = z.object({
   portions: z.coerce.number().positive().max(24),
 });
 
+/** Append after the dishes already in this slot. */
+async function nextSortOrder(
+  planId: string,
+  day: string,
+  slot: "lunch" | "dinner",
+): Promise<number> {
+  const rows = await getDb()
+    .select({ sortOrder: mealPlanEntries.sortOrder })
+    .from(mealPlanEntries)
+    .where(
+      and(
+        eq(mealPlanEntries.planId, planId),
+        eq(mealPlanEntries.day, day),
+        eq(mealPlanEntries.slot, slot),
+      ),
+    );
+  return rows.reduce((highest, row) => Math.max(highest, row.sortOrder), -1) + 1;
+}
+
 export async function addRecipeToPlan(input: unknown): Promise<PlanActionResult> {
   const parsed = addRecipeInput.safeParse(input);
   if (!parsed.success) return { error: "Pick a recipe and a portion count." };
@@ -53,9 +72,30 @@ export async function addRecipeToPlan(input: unknown): Promise<PlanActionResult>
 
   const planId = await ensurePlan(user.id, parsed.data.week);
 
-  await db
-    .insert(mealPlanEntries)
-    .values({
+  // Adding the same dish to the same slot again adjusts its portions; a
+  // different dish is appended so a main and a side can share a meal.
+  const [existing] = await db
+    .select({ id: mealPlanEntries.id })
+    .from(mealPlanEntries)
+    .where(
+      and(
+        eq(mealPlanEntries.planId, planId),
+        eq(mealPlanEntries.day, parsed.data.day),
+        eq(mealPlanEntries.slot, parsed.data.slot),
+        eq(mealPlanEntries.kind, "recipe"),
+        eq(mealPlanEntries.recipeId, recipe.id),
+        eq(mealPlanEntries.status, "planned"),
+      ),
+    )
+    .limit(1);
+
+  if (existing) {
+    await db
+      .update(mealPlanEntries)
+      .set({ portions: parsed.data.portions, status: "planned", cookEventId: null })
+      .where(eq(mealPlanEntries.id, existing.id));
+  } else {
+    await db.insert(mealPlanEntries).values({
       planId,
       day: parsed.data.day,
       slot: parsed.data.slot,
@@ -63,18 +103,9 @@ export async function addRecipeToPlan(input: unknown): Promise<PlanActionResult>
       recipeId: recipe.id,
       portions: parsed.data.portions,
       status: "planned",
-    })
-    .onConflictDoUpdate({
-      target: [mealPlanEntries.planId, mealPlanEntries.day, mealPlanEntries.slot],
-      set: {
-        kind: "recipe",
-        recipeId: recipe.id,
-        leftoverId: null,
-        portions: parsed.data.portions,
-        status: "planned",
-        cookEventId: null,
-      },
+      sortOrder: await nextSortOrder(planId, parsed.data.day, parsed.data.slot),
     });
+  }
 
   revalidatePath(`/plan/${parsed.data.week}`);
   return { message: `${recipe.title} added.` };
@@ -107,11 +138,31 @@ export async function addLeftoverToPlan(input: unknown): Promise<PlanActionResul
   }
 
   const planId = await ensurePlan(user.id, parsed.data.week);
+  const sortOrder = await nextSortOrder(planId, parsed.data.day, parsed.data.slot);
 
   await db.transaction(async (tx) => {
-    await tx
-      .insert(mealPlanEntries)
-      .values({
+    const [existing] = await tx
+      .select({ id: mealPlanEntries.id, portions: mealPlanEntries.portions })
+      .from(mealPlanEntries)
+      .where(
+        and(
+          eq(mealPlanEntries.planId, planId),
+          eq(mealPlanEntries.day, parsed.data.day),
+          eq(mealPlanEntries.slot, parsed.data.slot),
+          eq(mealPlanEntries.kind, "leftover"),
+          eq(mealPlanEntries.leftoverId, batch.id),
+          eq(mealPlanEntries.status, "planned"),
+        ),
+      )
+      .limit(1);
+
+    if (existing) {
+      await tx
+        .update(mealPlanEntries)
+        .set({ portions: existing.portions + parsed.data.portions })
+        .where(eq(mealPlanEntries.id, existing.id));
+    } else {
+      await tx.insert(mealPlanEntries).values({
         planId,
         day: parsed.data.day,
         slot: parsed.data.slot,
@@ -119,18 +170,9 @@ export async function addLeftoverToPlan(input: unknown): Promise<PlanActionResul
         leftoverId: batch.id,
         portions: parsed.data.portions,
         status: "planned",
-      })
-      .onConflictDoUpdate({
-        target: [mealPlanEntries.planId, mealPlanEntries.day, mealPlanEntries.slot],
-        set: {
-          kind: "leftover",
-          recipeId: null,
-          leftoverId: batch.id,
-          portions: parsed.data.portions,
-          status: "planned",
-          cookEventId: null,
-        },
+        sortOrder,
       });
+    }
 
     const remaining = batch.portions - parsed.data.portions;
     await tx
@@ -213,9 +255,7 @@ export async function addPlannedLeftover(input: unknown): Promise<PlanActionResu
       ),
     );
 
-  const alreadyPlanned = existing
-    .filter((row) => !(row.day === parsed.data.day && row.slot === parsed.data.slot))
-    .reduce((total, row) => total + row.portions, 0);
+  const alreadyPlanned = existing.reduce((total, row) => total + row.portions, 0);
 
   const available = capacity - alreadyPlanned;
   if (parsed.data.portions > available) {
@@ -227,9 +267,17 @@ export async function addPlannedLeftover(input: unknown): Promise<PlanActionResu
     };
   }
 
-  await db
-    .insert(mealPlanEntries)
-    .values({
+  const sameSlot = existing.find(
+    (row) => row.day === parsed.data.day && row.slot === parsed.data.slot,
+  );
+
+  if (sameSlot) {
+    await db
+      .update(mealPlanEntries)
+      .set({ portions: sameSlot.portions + parsed.data.portions })
+      .where(eq(mealPlanEntries.id, sameSlot.id));
+  } else {
+    await db.insert(mealPlanEntries).values({
       planId,
       day: parsed.data.day,
       slot: parsed.data.slot,
@@ -238,18 +286,9 @@ export async function addPlannedLeftover(input: unknown): Promise<PlanActionResu
       leftoverId: null,
       portions: parsed.data.portions,
       status: "planned",
-    })
-    .onConflictDoUpdate({
-      target: [mealPlanEntries.planId, mealPlanEntries.day, mealPlanEntries.slot],
-      set: {
-        kind: "leftover",
-        recipeId: recipe.id,
-        leftoverId: null,
-        portions: parsed.data.portions,
-        status: "planned",
-        cookEventId: null,
-      },
+      sortOrder: await nextSortOrder(planId, parsed.data.day, parsed.data.slot),
     });
+  }
 
   revalidatePath(`/plan/${parsed.data.week}`);
   return { message: `${recipe.title} planned as leftovers.` };

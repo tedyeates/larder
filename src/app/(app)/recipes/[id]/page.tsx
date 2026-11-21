@@ -71,6 +71,17 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
         </p>
       </header>
 
+      {recipe.aiNotes && (
+        <section className="mb-8 rounded-xl border border-dashed border-neutral-300 bg-neutral-50 p-4 dark:border-neutral-700 dark:bg-neutral-900/50">
+          <h2 className="mb-1 text-xs font-medium tracking-wide text-neutral-500 uppercase">
+            AI note
+          </h2>
+          <p className="text-sm whitespace-pre-line text-neutral-700 dark:text-neutral-300">
+            {recipe.aiNotes}
+          </p>
+        </section>
+      )}
+
       <section className="mb-8">
         <h2 className="mb-2 text-xs font-medium tracking-wide text-neutral-500 uppercase">
           Ingredients

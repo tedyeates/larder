@@ -71,6 +71,15 @@ describe("derivePlannedCooks", () => {
     expect(cooks).toEqual([]);
   });
 
+  it("tracks a main and a side in the same slot separately", () => {
+    const cooks = derivePlannedCooks([
+      entry({ id: "a", day: "2026-11-16", slot: "dinner", recipeId: "wings" }),
+      entry({ id: "b", day: "2026-11-16", slot: "dinner", recipeId: "salad" }),
+    ]);
+    expect(cooks.map((cook) => cook.recipeId).sort()).toEqual(["salad", "wings"]);
+    expect(cooks.every((cook) => cook.cooks === 1)).toBe(true);
+  });
+
   it("never reports negative capacity for a one-portion cook", () => {
     const cooks = derivePlannedCooks([
       entry({ id: "a", day: "2026-11-16", slot: "dinner", portions: 1 }),

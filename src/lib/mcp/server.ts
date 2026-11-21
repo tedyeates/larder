@@ -6,6 +6,7 @@ import { getDb } from "@/db";
 import {
   categories,
   ingredients,
+  leftovers,
   mealPlanEntries,
   mealPlans,
   recipeIngredients,
@@ -37,6 +38,9 @@ Rules that matter:
   a unit still can't be converted, say so and ask; never guess a weight or volume.
 - create_ingredient is idempotent and merges grams_per into an existing item, so
   use it to fill missing cup/spoon/piece weights before saving a recipe.
+- Recipes may carry ai_notes: planning constraints such as "serve with a salad".
+  Read them with get_recipe or search_recipes before planning. A day/slot may
+  hold more than one dish, so a main and a side can share a meal.
 - Cooking deducts oldest-first. Plans are proposals until the human cooks.
 - Leftovers are already-cooked portions: assigning one to a meal deducts nothing.
 - Prefer stock that is close to its best-before date.
@@ -151,6 +155,7 @@ export function buildLarderServer(userId: string): McpServer {
           title: entry.title,
           portions: entry.portions,
           status: entry.status,
+          ai_notes: entry.aiNotes ?? null,
         })),
       });
     },
@@ -160,7 +165,8 @@ export function buildLarderServer(userId: string): McpServer {
     "search_recipes",
     {
       title: "Search recipes",
-      description: "Find recipes by title. Returns id, title and servings.",
+      description:
+        "Find recipes by title. Returns id, title, servings and ai_notes (planning constraints).",
       inputSchema: {
         query: z.string().optional(),
         limit: z.number().int().min(1).max(50).optional(),
@@ -169,7 +175,12 @@ export function buildLarderServer(userId: string): McpServer {
     async ({ query, limit }) => {
       const needle = query?.trim().toLowerCase();
       const rows = await getDb()
-        .select({ id: recipes.id, title: recipes.title, servings: recipes.servings })
+        .select({
+          id: recipes.id,
+          title: recipes.title,
+          servings: recipes.servings,
+          aiNotes: recipes.aiNotes,
+        })
         .from(recipes)
         .where(eq(recipes.userId, userId));
       const filtered = rows
@@ -178,7 +189,14 @@ export function buildLarderServer(userId: string): McpServer {
             needle === undefined || needle === "" || row.title.toLowerCase().includes(needle),
         )
         .slice(0, limit ?? 20);
-      return text(filtered);
+      return text(
+        filtered.map((row) => ({
+          id: row.id,
+          title: row.title,
+          servings: row.servings,
+          ai_notes: row.aiNotes ?? null,
+        })),
+      );
     },
   );
 
@@ -215,8 +233,39 @@ export function buildLarderServer(userId: string): McpServer {
         id: recipe.id,
         title: recipe.title,
         servings: recipe.servings,
+        ai_notes: recipe.aiNotes ?? null,
         steps: recipe.steps,
         ingredients: lines,
+      });
+    },
+  );
+
+  server.registerTool(
+    "update_recipe_notes",
+    {
+      title: "Update recipe AI notes",
+      description:
+        "Replace the planning notes on an existing recipe. Notes are instructions for an agent, e.g. 'Serve with a salad, so plan two dishes for this meal'. Pass null to clear them.",
+      inputSchema: {
+        recipe_id: z.uuid(),
+        ai_notes: z.string().max(4000).nullable(),
+      },
+    },
+    async ({ recipe_id, ai_notes }) => {
+      const db = getDb();
+      const [updated] = await db
+        .update(recipes)
+        .set({ aiNotes: ai_notes?.trim() || null })
+        .where(and(eq(recipes.id, recipe_id), eq(recipes.userId, userId)))
+        .returning({ id: recipes.id, title: recipes.title, aiNotes: recipes.aiNotes });
+      if (!updated) return text({ error: "Recipe not found" });
+
+      revalidatePath("/recipes");
+      revalidatePath(`/recipes/${updated.id}`);
+      return text({
+        recipe_id: updated.id,
+        title: updated.title,
+        ai_notes: updated.aiNotes ?? null,
       });
     },
   );
@@ -515,6 +564,13 @@ export function buildLarderServer(userId: string): McpServer {
         title: z.string().min(1).max(120),
         servings: z.number().int().min(1).max(24),
         source_url: z.url().optional().describe("Where you found it"),
+        ai_notes: z
+          .string()
+          .max(4000)
+          .optional()
+          .describe(
+            "Planning instructions for an agent, e.g. 'Serve with a salad, so plan two dishes for this meal'.",
+          ),
         steps: z
           .union([z.string(), z.array(z.string())])
           .optional()
@@ -522,7 +578,7 @@ export function buildLarderServer(userId: string): McpServer {
         ingredients: z.array(recipeLineInput).min(1).max(60),
       },
     },
-    async ({ title, servings, source_url, steps, ingredients: lines }) => {
+    async ({ title, servings, source_url, ai_notes, steps, ingredients: lines }) => {
       const db = getDb();
       const catalogue = await db.select().from(ingredients).where(eq(ingredients.userId, userId));
 
@@ -613,6 +669,7 @@ export function buildLarderServer(userId: string): McpServer {
             servings,
             sourceUrl: source_url ?? null,
             steps: stepList.map((step) => ({ text: step })),
+            aiNotes: ai_notes?.trim() || null,
             createdBy: "agent",
           })
           .returning({ id: recipes.id });
@@ -652,7 +709,7 @@ export function buildLarderServer(userId: string): McpServer {
     {
       title: "Create a draft meal plan",
       description:
-        "Propose meals for a week. Saved as a DRAFT: it does not affect shopping or cooking until the human activates it. Overwrites the slots it targets, leaves the rest alone.",
+        "Propose meals for a week. Saved as a DRAFT: it does not affect shopping or cooking until the human activates it. A day and slot may hold more than one dish (a main and a side); the slots you target are replaced, other slots are left alone.",
       inputSchema: {
         week_start: z
           .string()
@@ -670,7 +727,7 @@ export function buildLarderServer(userId: string): McpServer {
             }),
           )
           .min(1)
-          .max(21),
+          .max(42),
       },
     },
     async ({ week_start, note, entries }) => {
@@ -703,38 +760,75 @@ export function buildLarderServer(userId: string): McpServer {
 
       const planId = await ensurePlan(userId, week_start);
 
+      const targets = new Map<string, { day: string; slot: "lunch" | "dinner" }>();
+      for (const entry of entries) {
+        targets.set(`${entry.day}:${entry.slot}`, { day: entry.day, slot: entry.slot });
+      }
+
       await db.transaction(async (tx) => {
         await tx
           .update(mealPlans)
           .set({ status: "draft", createdBy: "agent", notes: note ?? null })
           .where(eq(mealPlans.id, planId));
 
-        for (const entry of entries) {
-          await tx
-            .insert(mealPlanEntries)
-            .values({
-              planId,
-              day: entry.day,
-              slot: entry.slot,
-              kind: entry.kind,
-              recipeId: entry.recipe_id ?? null,
-              leftoverId: null,
-              portions: entry.portions,
-              status: "planned",
-              createdBy: "agent",
+        // Replace the slots this draft targets. Restore any leftover batch the
+        // old entries had claimed, then insert every dish for the slot.
+        for (const target of targets.values()) {
+          const replaced = await tx
+            .select({
+              kind: mealPlanEntries.kind,
+              leftoverId: mealPlanEntries.leftoverId,
+              portions: mealPlanEntries.portions,
             })
-            .onConflictDoUpdate({
-              target: [mealPlanEntries.planId, mealPlanEntries.day, mealPlanEntries.slot],
-              set: {
-                kind: entry.kind,
-                recipeId: entry.recipe_id ?? null,
-                leftoverId: null,
-                portions: entry.portions,
-                status: "planned",
-                createdBy: "agent",
-                cookEventId: null,
-              },
-            });
+            .from(mealPlanEntries)
+            .where(
+              and(
+                eq(mealPlanEntries.planId, planId),
+                eq(mealPlanEntries.day, target.day),
+                eq(mealPlanEntries.slot, target.slot),
+                eq(mealPlanEntries.status, "planned"),
+              ),
+            );
+
+          for (const row of replaced) {
+            if (row.kind !== "leftover" || row.leftoverId === null) continue;
+            const [batch] = await tx
+              .select({ portions: leftovers.portions })
+              .from(leftovers)
+              .where(eq(leftovers.id, row.leftoverId))
+              .limit(1);
+            if (!batch) continue;
+            await tx
+              .update(leftovers)
+              .set({ portions: batch.portions + row.portions, status: "available" })
+              .where(eq(leftovers.id, row.leftoverId));
+          }
+
+          await tx
+            .delete(mealPlanEntries)
+            .where(
+              and(
+                eq(mealPlanEntries.planId, planId),
+                eq(mealPlanEntries.day, target.day),
+                eq(mealPlanEntries.slot, target.slot),
+                eq(mealPlanEntries.status, "planned"),
+              ),
+            );
+        }
+
+        for (const [index, entry] of entries.entries()) {
+          await tx.insert(mealPlanEntries).values({
+            planId,
+            day: entry.day,
+            slot: entry.slot,
+            kind: entry.kind,
+            recipeId: entry.recipe_id ?? null,
+            leftoverId: null,
+            portions: entry.portions,
+            status: "planned",
+            createdBy: "agent",
+            sortOrder: index,
+          });
         }
       });
 
