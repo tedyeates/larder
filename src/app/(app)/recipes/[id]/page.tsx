@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { DeleteRecipeButton } from "@/components/delete-recipe-button";
+import { KeepScreenAwake } from "@/components/keep-screen-awake";
 import { getDb } from "@/db";
 import { ingredients, recipeIngredients, recipes } from "@/db/schema";
 import { auth } from "@/lib/auth/server";
@@ -47,6 +48,7 @@ export default async function RecipePage({ params }: { params: Promise<{ id: str
 
   return (
     <main className="mx-auto max-w-2xl px-5 pt-8 pb-28 sm:px-6">
+      <KeepScreenAwake />
       <Link href="/recipes" className="text-sm text-neutral-500 hover:underline">
         ← Recipes
       </Link>

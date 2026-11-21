@@ -58,6 +58,7 @@ export async function loadWeek(userId: string, week: string): Promise<WeekView> 
       recipeTitle: recipes.title,
       recipeNotes: recipes.aiNotes,
       leftoverLabel: leftovers.label,
+      leftoverRecipeId: leftovers.recipeId,
     })
     .from(mealPlanEntries)
     .leftJoin(recipes, eq(mealPlanEntries.recipeId, recipes.id))
@@ -74,7 +75,7 @@ export async function loadWeek(userId: string, week: string): Promise<WeekView> 
       day: row.day,
       slot: row.slot,
       kind: row.kind,
-      recipeId: row.recipeId,
+      recipeId: row.recipeId ?? row.leftoverRecipeId,
       leftoverId: row.leftoverId,
       title: row.recipeTitle ?? row.leftoverLabel ?? "Meal",
       portions: row.portions,
