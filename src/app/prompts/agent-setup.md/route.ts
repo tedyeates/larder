@@ -73,6 +73,7 @@ get 401, the token is wrong. If you get 503, the server has no token configured.
 - \`list_ingredients({ query?, limit? })\`
 - \`create_ingredient({ name, stock_unit, category?, grams_per_unit?, grams_per? })\` — idempotent; passing \`grams_per\` repairs an existing ingredient
 - \`create_recipe({ title, servings, source_url?, steps?, ai_notes?, ingredients[] })\` — recipe units may be written as \`cups\`, \`tablespoons\`, \`grams\`, etc.
+- \`update_recipe({ recipe_id, title?, servings?, steps?, ai_notes?, ingredients? })\` — edit a recipe; passing \`ingredients\` replaces every line
 - \`update_recipe_notes({ recipe_id, ai_notes })\` — planning notes for an existing recipe
 - \`create_meal_plan({ week_start, note?, entries[] })\` — saves a **draft**; a day/slot may hold more than one dish
 

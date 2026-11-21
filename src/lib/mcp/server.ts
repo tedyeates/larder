@@ -56,6 +56,116 @@ const text = (value: unknown) => ({
   content: [{ type: "text" as const, text: JSON.stringify(value, null, 2) }],
 });
 
+const recipeLineInput = z.object({
+  ingredient_id: z.uuid().optional(),
+  name: z.string().min(1).max(120).optional(),
+  quantity: z.number().positive().max(1_000_000),
+  unit: z.string().min(1).max(16),
+  note: z.string().max(200).optional(),
+  optional: z.boolean().optional(),
+});
+
+type CatalogueIngredient = typeof ingredients.$inferSelect;
+
+interface ResolvedRecipeLine {
+  readonly item: CatalogueIngredient;
+  readonly quantity: number;
+  readonly unit: UnitCode;
+  readonly note?: string;
+  readonly optional?: boolean;
+}
+
+type RecipeLineInput = z.infer<typeof recipeLineInput>;
+
+/**
+ * Match recipe lines to the catalogue and prove every unit converts. Returns
+ * either the resolved lines or a ready-to-send error payload, so create and
+ * update share exactly the same validation.
+ */
+async function resolveRecipeLines(
+  userId: string,
+  lines: readonly RecipeLineInput[],
+): Promise<{ resolved: ResolvedRecipeLine[] } | { error: unknown }> {
+  const catalogue = await getDb().select().from(ingredients).where(eq(ingredients.userId, userId));
+
+  const byId = new Map(catalogue.map((item) => [item.id, item]));
+  const byName = new Map<string, CatalogueIngredient>();
+  for (const item of catalogue) {
+    byName.set(item.name.toLowerCase(), item);
+    for (const alias of item.aliases ?? []) byName.set(alias.toLowerCase(), item);
+  }
+
+  const unresolved: string[] = [];
+  const conversionErrors: string[] = [];
+  const resolved: ResolvedRecipeLine[] = [];
+
+  for (const line of lines) {
+    const item = line.ingredient_id
+      ? byId.get(line.ingredient_id)
+      : line.name
+        ? (byName.get(line.name.toLowerCase()) ??
+          catalogue.find((candidate) => candidate.slug === slugify(line.name ?? "")))
+        : undefined;
+
+    if (!item) {
+      unresolved.push(line.name ?? line.ingredient_id ?? "unknown");
+      continue;
+    }
+
+    const unit = parseUnit(line.unit);
+    if (unit === null) {
+      conversionErrors.push(
+        `${item.name}: "${line.unit}" is not a unit Larder knows. Use a unit such as g, kg, ml, l, tsp, tbsp, cup, oz, lb, fl oz, each, clove, slice, head, bunch, can or pack.`,
+      );
+      continue;
+    }
+
+    try {
+      toBase(line.quantity, unit, {
+        id: item.id,
+        name: item.name,
+        stockUnit: item.stockUnit as UnitCode,
+        gramsPer: item.gramsPer ?? undefined,
+      });
+    } catch {
+      conversionErrors.push(
+        `${item.name}: ${unit} does not convert to ${item.stockUnit}. Set grams per ${unit} with create_ingredient or ask the human.`,
+      );
+      continue;
+    }
+
+    resolved.push({
+      item,
+      quantity: line.quantity,
+      unit,
+      note: line.note,
+      optional: line.optional,
+    });
+  }
+
+  if (unresolved.length > 0 || conversionErrors.length > 0) {
+    return {
+      error: {
+        error: "Nothing was saved. Fix these lines and call again.",
+        unresolved,
+        conversion_errors: conversionErrors,
+        hint: "Use list_ingredients to find ids, create_ingredient for new items, or ask the human how they measure it.",
+      },
+    };
+  }
+
+  return { resolved };
+}
+
+function stepsToText(steps: string | string[] | undefined): { text: string }[] | undefined {
+  if (steps === undefined) return undefined;
+  const list = typeof steps === "string" ? steps.split("\n") : steps;
+  return list
+    .map((step) => step.trim())
+    .filter((step) => step.length > 0)
+    .map((text) => ({ text }));
+}
+
 export function buildLarderServer(userId: string): McpServer {
   const server = new McpServer(
     { name: "larder", version: "0.1.0" },
@@ -545,15 +655,6 @@ export function buildLarderServer(userId: string): McpServer {
     },
   );
 
-  const recipeLineInput = z.object({
-    ingredient_id: z.uuid().optional(),
-    name: z.string().min(1).max(120).optional(),
-    quantity: z.number().positive().max(1_000_000),
-    unit: z.string().min(1).max(16),
-    note: z.string().max(200).optional(),
-    optional: z.boolean().optional(),
-  });
-
   server.registerTool(
     "create_recipe",
     {
@@ -580,85 +681,11 @@ export function buildLarderServer(userId: string): McpServer {
     },
     async ({ title, servings, source_url, ai_notes, steps, ingredients: lines }) => {
       const db = getDb();
-      const catalogue = await db.select().from(ingredients).where(eq(ingredients.userId, userId));
+      const resolvedResult = await resolveRecipeLines(userId, lines);
+      if ("error" in resolvedResult) return text(resolvedResult.error);
+      const resolved = resolvedResult.resolved;
 
-      const byId = new Map(catalogue.map((item) => [item.id, item]));
-      const byName = new Map<string, (typeof catalogue)[number]>();
-      for (const item of catalogue) {
-        byName.set(item.name.toLowerCase(), item);
-        for (const alias of item.aliases ?? []) byName.set(alias.toLowerCase(), item);
-      }
-
-      const unresolved: string[] = [];
-      const conversionErrors: string[] = [];
-      const resolved: {
-        item: (typeof catalogue)[number];
-        quantity: number;
-        unit: UnitCode;
-        note?: string;
-        optional?: boolean;
-      }[] = [];
-
-      for (const line of lines) {
-        const item = line.ingredient_id
-          ? byId.get(line.ingredient_id)
-          : line.name
-            ? (byName.get(line.name.toLowerCase()) ??
-              catalogue.find((candidate) => candidate.slug === slugify(line.name ?? "")))
-            : undefined;
-
-        if (!item) {
-          unresolved.push(line.name ?? line.ingredient_id ?? "unknown");
-          continue;
-        }
-
-        const unit = parseUnit(line.unit);
-        if (unit === null) {
-          conversionErrors.push(
-            `${item.name}: "${line.unit}" is not a unit Larder knows. Use a unit such as g, kg, ml, l, tsp, tbsp, cup, oz, lb, fl oz, each, clove, slice, head, bunch, can or pack.`,
-          );
-          continue;
-        }
-
-        try {
-          toBase(line.quantity, unit, {
-            id: item.id,
-            name: item.name,
-            stockUnit: item.stockUnit as UnitCode,
-            gramsPer: item.gramsPer ?? undefined,
-          });
-        } catch {
-          conversionErrors.push(
-            `${item.name}: ${unit} does not convert to ${item.stockUnit}. Set grams per ${unit} with create_ingredient or ask the human.`,
-          );
-          continue;
-        }
-
-        resolved.push({
-          item,
-          quantity: line.quantity,
-          unit,
-          note: line.note,
-          optional: line.optional,
-        });
-      }
-
-      if (unresolved.length > 0 || conversionErrors.length > 0) {
-        return text({
-          error: "Nothing was saved. Fix these lines and call again.",
-          unresolved,
-          conversion_errors: conversionErrors,
-          hint: "Use list_ingredients to find ids, create_ingredient for new items, or ask the human how they measure it.",
-        });
-      }
-
-      const stepList =
-        typeof steps === "string"
-          ? steps
-              .split("\n")
-              .map((step) => step.trim())
-              .filter((step) => step.length > 0)
-          : (steps ?? []).map((step) => step.trim()).filter((step) => step.length > 0);
+      const stepList = stepsToText(steps) ?? [];
 
       const recipeId = await db.transaction(async (tx) => {
         const [recipe] = await tx
@@ -668,7 +695,7 @@ export function buildLarderServer(userId: string): McpServer {
             title: title.trim(),
             servings,
             sourceUrl: source_url ?? null,
-            steps: stepList.map((step) => ({ text: step })),
+            steps: stepList,
             aiNotes: ai_notes?.trim() || null,
             createdBy: "agent",
           })
@@ -700,6 +727,113 @@ export function buildLarderServer(userId: string): McpServer {
         lines: resolved.length,
         source_url: source_url ?? null,
         next: "Add it to a draft with create_meal_plan, then ask the human to activate it.",
+      });
+    },
+  );
+
+  server.registerTool(
+    "update_recipe",
+    {
+      title: "Edit a recipe",
+      description:
+        "Edit an existing recipe. Send only what changes. If `ingredients` is present it replaces every line, with the same ingredient matching and unit conversion rules as create_recipe; otherwise the existing lines are kept.",
+      inputSchema: {
+        recipe_id: z.uuid(),
+        title: z.string().min(1).max(120).optional(),
+        servings: z.number().int().min(1).max(24).optional(),
+        source_url: z.url().nullable().optional().describe("Pass null to clear the source"),
+        ai_notes: z
+          .string()
+          .max(4000)
+          .nullable()
+          .optional()
+          .describe("Pass null to clear the notes"),
+        steps: z
+          .union([z.string(), z.array(z.string())])
+          .optional()
+          .describe("Replaces the method when present; an empty value clears it"),
+        ingredients: z
+          .array(recipeLineInput)
+          .min(1)
+          .max(60)
+          .optional()
+          .describe("Replaces every ingredient line when present"),
+      },
+    },
+    async ({ recipe_id, title, servings, source_url, ai_notes, steps, ingredients: lines }) => {
+      if (
+        title === undefined &&
+        servings === undefined &&
+        source_url === undefined &&
+        ai_notes === undefined &&
+        steps === undefined &&
+        lines === undefined
+      ) {
+        return text({ error: "Give at least one field to update." });
+      }
+
+      const db = getDb();
+      const [existing] = await db
+        .select()
+        .from(recipes)
+        .where(and(eq(recipes.id, recipe_id), eq(recipes.userId, userId)))
+        .limit(1);
+      if (!existing) return text({ error: "Recipe not found" });
+
+      let resolved: ResolvedRecipeLine[] | null = null;
+      if (lines !== undefined) {
+        const result = await resolveRecipeLines(userId, lines);
+        if ("error" in result) return text(result.error);
+        resolved = result.resolved;
+      }
+
+      const update: Partial<typeof recipes.$inferInsert> = {};
+      if (title !== undefined) update.title = title.trim();
+      if (servings !== undefined) update.servings = servings;
+      if (source_url !== undefined) update.sourceUrl = source_url?.trim() || null;
+      if (ai_notes !== undefined) update.aiNotes = ai_notes?.trim() || null;
+      if (steps !== undefined) update.steps = stepsToText(steps) ?? [];
+
+      await db.transaction(async (tx) => {
+        if (Object.keys(update).length > 0) {
+          await tx.update(recipes).set(update).where(eq(recipes.id, existing.id));
+        }
+
+        if (resolved !== null) {
+          await tx.delete(recipeIngredients).where(eq(recipeIngredients.recipeId, existing.id));
+          await tx.insert(recipeIngredients).values(
+            resolved.map((line, index) => ({
+              recipeId: existing.id,
+              ingredientId: line.item.id,
+              rawText: `${line.quantity} ${line.unit} ${line.item.name}${line.note ? ` (${line.note})` : ""}`,
+              quantity: line.quantity,
+              unit: line.unit,
+              note: line.note ?? null,
+              isOptional: line.optional ?? false,
+              sortOrder: index,
+              parseStatus: "ok",
+            })),
+          );
+        }
+      });
+
+      revalidatePath("/recipes");
+      revalidatePath(`/recipes/${existing.id}`);
+      revalidatePath("/plan");
+
+      return text({
+        recipe_id: existing.id,
+        title: update.title ?? existing.title,
+        updated: [
+          ...(title === undefined ? [] : ["title"]),
+          ...(servings === undefined ? [] : ["servings"]),
+          ...(source_url === undefined ? [] : ["source_url"]),
+          ...(ai_notes === undefined ? [] : ["ai_notes"]),
+          ...(steps === undefined ? [] : ["steps"]),
+          ...(resolved === null ? [] : ["ingredients"]),
+        ],
+        lines: resolved?.length ?? null,
+        ai_notes: update.aiNotes === undefined ? (existing.aiNotes ?? null) : update.aiNotes,
       });
     },
   );

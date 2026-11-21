@@ -65,6 +65,13 @@ You have web access. Use it, but bring the human with you.
 Never invent a recipe's quantities. If a page gives "a handful", either ask the
 human how they measure it or leave the line out and say so.
 
+## Editing a recipe
+
+Use `update_recipe` to change an existing recipe. Send only the fields that change;
+passing `ingredients` replaces every line, so include the complete list. The same
+unit checks apply, and nothing is written if a line cannot be resolved. Never edit
+Postgres directly — recipe lines belong to the app.
+
 
 ## Good output
 
