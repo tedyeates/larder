@@ -1,5 +1,6 @@
 "use client";
 
+import { Flame, Trash2, Utensils } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
@@ -15,6 +16,7 @@ import {
 } from "@/actions/plan";
 import { generateShoppingList } from "@/actions/shop";
 import type { LeftoverOption, PlanEntryView, PlannedCook, RecipeOption, Slot } from "@/lib/plan";
+import { type SwipeAction, SwipeActions } from "./swipe-actions";
 
 const DAY_LABEL = new Intl.DateTimeFormat("en-GB", {
   weekday: "long",
@@ -186,67 +188,59 @@ export function WeekBoard({
   }
 
   function renderEntry(entry: PlanEntryView) {
-    return (
-      <div className="space-y-2">
-        <div className="flex items-start justify-between gap-2">
-          <p className="text-sm font-medium">
-            {entry.recipeId ? (
-              <Link
-                href={`/recipes/${entry.recipeId}`}
-                className="underline-offset-4 hover:underline"
-              >
-                {entry.title}
-              </Link>
-            ) : (
-              entry.title
-            )}
-            <span className="ml-2 text-xs font-normal text-neutral-500">
-              {entry.portions} {entry.kind === "leftover" ? "portion(s)" : "serving(s)"}
-            </span>
-          </p>
-          {entry.kind === "leftover" && (
-            <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
-              {entry.leftoverId === null ? "planned leftover" : "leftover"}
-            </span>
-          )}
-        </div>
+    const actions: SwipeAction[] = [];
 
-        <div className="flex flex-wrap gap-2">
-          {entry.recipeId && (
-            <Link
-              href={`/recipes/${entry.recipeId}`}
-              className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-600 dark:border-neutral-700 dark:text-neutral-300"
-            >
-              Recipe
-            </Link>
-          )}
-          {entry.status === "planned" && entry.kind === "leftover" && entry.leftoverId === null && (
-            <span className="text-xs text-neutral-500">waiting for the cook</span>
-          )}
-          {entry.status === "planned" &&
-            (entry.kind !== "leftover" || entry.leftoverId !== null) && (
-              <button
-                type="button"
-                onClick={() => cook(entry)}
-                disabled={pending}
-                className="rounded-md bg-neutral-900 px-2.5 py-1 text-xs font-medium text-white disabled:opacity-50 dark:bg-white dark:text-neutral-900"
-              >
-                {entry.kind === "leftover" ? "Eat" : "Cook"}
-              </button>
+    if (entry.status === "planned" && (entry.kind !== "leftover" || entry.leftoverId !== null)) {
+      actions.push({
+        key: "cook",
+        label: entry.kind === "leftover" ? "Eat" : "Cook",
+        icon: entry.kind === "leftover" ? <Utensils size={15} /> : <Flame size={15} />,
+        onClick: () => cook(entry),
+        tone: "primary",
+      });
+    }
+
+    actions.push({
+      key: "remove",
+      label: "Remove",
+      icon: <Trash2 size={15} />,
+      onClick: () => remove(entry),
+    });
+
+    return (
+      <SwipeActions actions={actions}>
+        <div className="space-y-1 py-1">
+          <div className="flex items-start justify-between gap-2">
+            <p className="text-sm font-medium">
+              {entry.recipeId ? (
+                <Link
+                  href={`/recipes/${entry.recipeId}`}
+                  className="underline decoration-neutral-300 underline-offset-4 hover:decoration-neutral-500"
+                >
+                  {entry.title}
+                </Link>
+              ) : (
+                entry.title
+              )}
+              <span className="ml-2 text-xs font-normal text-neutral-500">
+                {entry.portions} {entry.kind === "leftover" ? "portion(s)" : "serving(s)"}
+              </span>
+            </p>
+            {entry.kind === "leftover" && (
+              <span className="rounded-full bg-neutral-100 px-2 py-0.5 text-xs text-neutral-600 dark:bg-neutral-900 dark:text-neutral-400">
+                {entry.leftoverId === null ? "planned leftover" : "leftover"}
+              </span>
             )}
-          {entry.status !== "planned" && (
-            <span className="text-xs text-neutral-500 capitalize">{entry.status}</span>
+          </div>
+
+          {entry.status === "planned" && entry.kind === "leftover" && entry.leftoverId === null && (
+            <span className="block text-xs text-neutral-500">waiting for the cook</span>
           )}
-          <button
-            type="button"
-            onClick={() => remove(entry)}
-            disabled={pending}
-            className="rounded-md border border-neutral-300 px-2.5 py-1 text-xs text-neutral-500 disabled:opacity-50 dark:border-neutral-700"
-          >
-            Remove
-          </button>
+          {entry.status !== "planned" && (
+            <span className="block text-xs text-neutral-500 capitalize">{entry.status}</span>
+          )}
         </div>
-      </div>
+      </SwipeActions>
     );
   }
 

@@ -1,9 +1,15 @@
 "use client";
 
-import type { PointerEvent as ReactPointerEvent, ReactNode } from "react";
-import { useRef, useState } from "react";
+import type { ReactNode, PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 const ACTION_WIDTH = 72;
+const PEEK_DISTANCE = 14;
+const PEEK_MS = 600;
+const PEEK_COOLDOWN_MS = 12_000;
+
+/** One automatic hint per page per session, so touch users see the gesture. */
+const hintedPages = new Set<string>();
 
 export interface SwipeAction {
   readonly key: string;
@@ -17,6 +23,9 @@ export interface SwipeAction {
  * Swipe a row left to reveal its actions, TickTick style. Works with touch and
  * mouse, keeps the buttons in the DOM for keyboard users, and only captures the
  * pointer once the gesture is clearly horizontal so taps still click normally.
+ *
+ * Rows also give an occasional small nudge left: on hover, and once per page
+ * on touch, so the hidden actions are discoverable.
  */
 export function SwipeActions({
   actions,
@@ -28,12 +37,69 @@ export function SwipeActions({
   const panelWidth = actions.length * ACTION_WIDTH;
   const [offset, setOffset] = useState(0);
   const [dragging, setDragging] = useState(false);
+  const [peek, setPeek] = useState(0);
   const start = useRef<{ x: number; base: number } | null>(null);
   const dragged = useRef(false);
   const capturing = useRef(false);
+  const peekTimer = useRef<number | null>(null);
+  const lastPeek = useRef(0);
+  const offsetRef = useRef(offset);
+  const draggingRef = useRef(dragging);
+  offsetRef.current = offset;
+  draggingRef.current = dragging;
+
+  const nudge = useCallback(() => {
+    if (typeof window === "undefined") return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    if (draggingRef.current || offsetRef.current !== 0) return;
+
+    const now = Date.now();
+    if (now - lastPeek.current < PEEK_COOLDOWN_MS) return;
+    lastPeek.current = now;
+
+    setPeek(-PEEK_DISTANCE);
+    if (peekTimer.current !== null) window.clearTimeout(peekTimer.current);
+    peekTimer.current = window.setTimeout(() => {
+      setPeek(0);
+      peekTimer.current = null;
+    }, PEEK_MS);
+  }, []);
+
+  useEffect(() => {
+    if (!window.matchMedia("(pointer: coarse)").matches) return;
+
+    const key = `larder-swipe-hint:${window.location.pathname}`;
+    try {
+      if (window.sessionStorage.getItem(key)) return;
+    } catch {
+      // Private mode can throw; the in-memory set still prevents duplicates.
+    }
+    if (hintedPages.has(window.location.pathname)) return;
+    hintedPages.add(window.location.pathname);
+    try {
+      window.sessionStorage.setItem(key, "1");
+    } catch {
+      // Ignore storage failures; the hint still runs once per mount.
+    }
+
+    const timer = window.setTimeout(nudge, 2200);
+    return () => window.clearTimeout(timer);
+  }, [nudge]);
+
+  useEffect(
+    () => () => {
+      if (peekTimer.current !== null) window.clearTimeout(peekTimer.current);
+    },
+    [],
+  );
 
   function down(event: ReactPointerEvent<HTMLDivElement>) {
     if (event.pointerType === "mouse" && event.button !== 0) return;
+    if (peekTimer.current !== null) {
+      window.clearTimeout(peekTimer.current);
+      peekTimer.current = null;
+    }
+    setPeek(0);
     start.current = { x: event.clientX, base: offset };
     dragged.current = false;
     capturing.current = false;
@@ -98,13 +164,20 @@ export function SwipeActions({
       <div
         className="relative touch-pan-y bg-white dark:bg-neutral-950"
         style={{
-          transform: `translateX(${offset}px)`,
-          transition: dragging ? "none" : "transform 150ms ease",
+          transform: `translateX(${offset !== 0 ? offset : peek}px)`,
+          transition: dragging
+            ? "none"
+            : peek !== 0
+              ? "transform 420ms ease"
+              : "transform 180ms ease",
         }}
         onPointerDown={down}
         onPointerMove={move}
         onPointerUp={up}
         onPointerCancel={up}
+        onPointerEnter={(event) => {
+          if (event.pointerType === "mouse") nudge();
+        }}
         onClickCapture={(event) => {
           if (dragged.current) {
             event.preventDefault();
