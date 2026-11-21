@@ -147,6 +147,9 @@ export function ShoppingList({
       origin: "manual",
       ingredientId: selected.id,
       quantityLocked: false,
+      ticktickTaskId: null,
+      ticktickProjectId: null,
+      ticktickTitle: null,
     };
     startTransition(async () => {
       applyOptimistic({ kind: "add", row: optimisticRow });

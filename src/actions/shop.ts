@@ -14,12 +14,12 @@ import {
   shoppingLists,
   stockEntries,
 } from "@/db/schema";
-import { addDays, todayIso } from "@/domain/dates";
 import { balance } from "@/domain/ledger";
 import { diffAgainstPantry, planRequirements } from "@/domain/plan";
 import { assertUnitCode, baseUnitFor, isUnitCode, toBase, type UnitCode } from "@/domain/units";
 import { auth } from "@/lib/auth/server";
-import { getOpenList } from "@/lib/shop";
+import { completeShoppingItem, getOpenList } from "@/lib/shop";
+import { completeTickTickTaskForItem, deleteTickTickTaskForItem } from "@/lib/ticktick";
 import { getOrCreateAppUser } from "@/lib/users";
 
 async function context() {
@@ -268,86 +268,19 @@ export async function updateShoppingItem(itemId: string, input: unknown): Promis
 export async function tickShoppingItem(itemId: string): Promise<ShopResult> {
   const user = await context();
   if (!user) return { error: "You are signed out." };
-  const db = getDb();
 
-  const [row] = await db
-    .select({
-      id: shoppingItems.id,
-      ingredientId: shoppingItems.ingredientId,
-      label: shoppingItems.label,
-      quantity: shoppingItems.quantity,
-      unit: shoppingItems.unit,
-      status: shoppingItems.status,
-    })
-    .from(shoppingItems)
-    .innerJoin(shoppingLists, eq(shoppingItems.listId, shoppingLists.id))
-    .where(and(eq(shoppingItems.id, itemId), eq(shoppingLists.userId, user.id)))
-    .limit(1);
-
-  if (!row) return { error: "That item is gone." };
-  if (row.status !== "pending") return { message: "Already ticked." };
-
-  if (
-    row.ingredientId === null ||
-    row.quantity === null ||
-    row.unit === null ||
-    !isUnitCode(row.unit)
-  ) {
-    await db
-      .update(shoppingItems)
-      .set({ status: "ticked", tickedAt: new Date() })
-      .where(eq(shoppingItems.id, row.id));
-    revalidatePath("/shop");
-    return { message: `${row.label} ticked.` };
-  }
-
-  const [item] = await db
-    .select()
-    .from(ingredients)
-    .where(and(eq(ingredients.id, row.ingredientId), eq(ingredients.userId, user.id)))
-    .limit(1);
-  if (!item) return { error: "That ingredient is gone." };
-
-  let amount: number;
-  try {
-    amount = toBase(row.quantity, assertUnitCode(row.unit), {
-      id: item.id,
-      name: item.name,
-      stockUnit: item.stockUnit as UnitCode,
-      gramsPer: item.gramsPer ?? undefined,
-    });
-  } catch {
-    return { error: `${row.label}: ${row.unit} can't be converted.` };
-  }
-
-  const today = todayIso();
-  const bestBefore = item.shelfLifeDays === null ? null : addDays(today, item.shelfLifeDays);
-
-  await db.transaction(async (tx) => {
-    const [entry] = await tx
-      .insert(stockEntries)
-      .values({
-        userId: user.id,
-        ingredientId: item.id,
-        quantity: amount,
-        unitAsEntered: row.unit,
-        quantityAsEntered: row.quantity,
-        reason: "purchase",
-        acquiredAt: today,
-        bestBefore,
-        shoppingItemId: row.id,
-      })
-      .returning({ id: stockEntries.id });
-
-    await tx
-      .update(shoppingItems)
-      .set({ status: "ticked", tickedAt: new Date(), resultingStockEntryId: entry?.id })
-      .where(eq(shoppingItems.id, row.id));
-  });
+  const result = await completeShoppingItem(user.id, itemId);
+  if (result.error) return result;
 
   revalidatePath("/shop");
   revalidatePath("/pantry");
-  return { message: `${row.label} added to the pantry.` };
+  // Best effort: if this item came from TickTick, tick it there too.
+  try {
+    await completeTickTickTaskForItem(user.id, itemId);
+  } catch {
+    // Local pantry is already updated; the next sync can reconcile TickTick.
+  }
+  return result;
 }
 
 const manualInput = z.object({
@@ -405,5 +338,11 @@ export async function removeShoppingItem(itemId: string): Promise<ShopResult> {
 
   await db.update(shoppingItems).set({ status: "removed" }).where(eq(shoppingItems.id, row.id));
   revalidatePath("/shop");
+  // Best effort: keep TickTick from showing a task that no longer exists here.
+  try {
+    await deleteTickTickTaskForItem(user.id, itemId);
+  } catch {
+    // The local list is already correct; the next sync can clean up TickTick.
+  }
   return { message: "Removed." };
 }

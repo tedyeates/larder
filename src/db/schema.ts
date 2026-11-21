@@ -85,6 +85,26 @@ export const users = pgTable("users", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+/**
+ * TickTick OAuth credentials and the chosen project/list. One row per user.
+ * Tokens are personal secrets: never send them to the client.
+ */
+export const ticktickSettings = pgTable("ticktick_settings", {
+  userId: uuid("user_id")
+    .primaryKey()
+    .references(() => users.id, { onDelete: "cascade" }),
+  clientId: text("client_id"),
+  clientSecret: text("client_secret"),
+  accessToken: text("access_token"),
+  refreshToken: text("refresh_token"),
+  expiresAt: timestamp("expires_at", { withTimezone: true }),
+  projectId: text("project_id"),
+  projectName: text("project_name"),
+  connectedAt: timestamp("connected_at", { withTimezone: true }),
+  lastSyncedAt: timestamp("last_synced_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const ingredients = pgTable(
   "ingredients",
   {
@@ -304,6 +324,8 @@ export const shoppingItems = pgTable(
     sortOrder: integer("sort_order").notNull().default(0),
     ticktickTaskId: text("ticktick_task_id"),
     ticktickProjectId: text("ticktick_project_id"),
+    /** The title last pushed to TickTick, so sync only updates real changes. */
+    ticktickTitle: text("ticktick_title"),
     resultingStockEntryId: uuid("resulting_stock_entry_id"),
   },
   (table) => [index("shopping_items_list_idx").on(table.listId, table.status)],

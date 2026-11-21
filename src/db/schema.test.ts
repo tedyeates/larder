@@ -73,6 +73,7 @@ describe("migration", () => {
         "shopping_items",
         "shopping_lists",
         "stock_entries",
+        "ticktick_settings",
         "users",
       ]),
     );

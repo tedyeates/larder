@@ -50,6 +50,20 @@
       "when": 1795262716901,
       "tag": "0006_chief_firestar",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1795280070340,
+      "tag": "0007_pretty_songbird",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1795280173832,
+      "tag": "0008_jittery_lily_hollister",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,11 @@
 import { redirect } from "next/navigation";
 import { ShoppingList } from "@/components/shopping-list";
+import { TickTickSyncBar } from "@/components/ticktick-sync-bar";
 import { auth } from "@/lib/auth/server";
 import { listIngredientOptions } from "@/lib/catalogue";
 import { currentWeek } from "@/lib/plan";
 import { getOpenList, getShoppingRows } from "@/lib/shop";
+import { getTickTickSettings } from "@/lib/ticktick";
 import { getOrCreateAppUser } from "@/lib/users";
 
 export const dynamic = "force-dynamic";
@@ -19,9 +21,10 @@ export default async function ShopPage() {
   });
 
   const list = await getOpenList(user.id);
-  const [rows, ingredients] = await Promise.all([
+  const [rows, ingredients, ticktick] = await Promise.all([
     getShoppingRows(list.id),
     listIngredientOptions(user.id),
+    getTickTickSettings(user.id),
   ]);
 
   return (
@@ -32,6 +35,13 @@ export default async function ShopPage() {
           Tick what you bought. It goes straight into the pantry.
         </p>
       </header>
+
+      <TickTickSyncBar
+        connected={Boolean(ticktick?.accessToken)}
+        configured={Boolean(ticktick?.accessToken && ticktick.projectId)}
+        projectName={ticktick?.projectName ?? null}
+        lastSyncedAt={ticktick?.lastSyncedAt?.toISOString() ?? null}
+      />
 
       <ShoppingList rows={rows} ingredients={ingredients} week={currentWeek()} />
     </main>

@@ -161,7 +161,27 @@ Expect `serverInfo` with `"name":"larder"`. `401` means the token is wrong; `503
 
 ---
 
-## 4. Post-deploy checklist
+## 4. TickTick sync
+
+Larder can push the open shopping list to a TickTick list and pull completed
+tasks back into the pantry. It uses TickTick's OAuth app flow; no API key is
+stored in Vercel.
+
+1. Create an app at <https://developer.ticktick.com/>.
+2. Add this redirect URI exactly:
+   `https://<your-app>.vercel.app/api/integrations/ticktick/callback`
+   (use `http://localhost:3000/api/integrations/ticktick/callback` locally).
+3. In Larder, open **Shop → Set up → TickTick sync**.
+4. Paste the client ID and secret, save, then **Connect TickTick**.
+5. Choose the list and press **Sync now**.
+
+The client secret and OAuth tokens are stored in the `ticktick_settings` table
+and never sent back to the browser. Pending shopping items become TickTick
+tasks; ticking one in TickTick and syncing adds that stock to the pantry.
+
+---
+
+## 5. Post-deploy checklist
 
 | Check | Expected |
 |---|---|
@@ -177,7 +197,7 @@ Expect `serverInfo` with `"name":"larder"`. `401` means the token is wrong; `503
 
 ---
 
-## 5. Preview deployments (optional)
+## 6. Preview deployments (optional)
 
 Each Neon branch gets its own database **and its own auth URL**, so previews need their own
 variables, not production's:
@@ -193,7 +213,7 @@ which you should not accept, because a preview sign-in writes real sessions.
 
 ---
 
-## 6. Rotating secrets
+## 7. Rotating secrets
 
 | Secret | Effect |
 |---|---|
@@ -205,7 +225,7 @@ Change the value in Vercel, redeploy, then update `.env.local` and `opencode.jso
 
 ---
 
-## 7. Troubleshooting
+## 8. Troubleshooting
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -215,4 +235,6 @@ Change the value in Vercel, redeploy, then update `.env.local` and `opencode.jso
 | `prepared statement already exists` | migration ran over the pooled URL | use `DATABASE_URL_UNPOOLED` |
 | Every page slow after idle | Neon compute woke from scale-to-zero | first request only; ~300 ms |
 | MCP tools missing in OpenCode | config used `mcp.<name>` instead of `mcp.servers.<name>` | fix `opencode.json`; it reloads without restart |
+| TickTick says redirect URI is invalid | the URI in the TickTick app differs from `/settings/ticktick` | copy it exactly, including scheme and host |
+| TickTick sync returns 401 | access token expired or revoked | open the TickTick settings and **Reconnect TickTick** |
 | Sign-up form rejected | branch has sign-ups disabled | admin-create or temporarily re-enable |
