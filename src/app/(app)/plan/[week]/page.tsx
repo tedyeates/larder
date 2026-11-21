@@ -9,6 +9,7 @@ import {
   listLeftovers,
   listRecipeOptions,
   loadWeek,
+  summarizePlan,
   weekDays,
 } from "@/lib/plan";
 import { getOrCreateAppUser } from "@/lib/users";
@@ -44,6 +45,7 @@ export default async function WeekPage({ params }: { params: Promise<{ week: str
   const first = days[0];
   const last = days[6];
   const plannedCooks = derivePlannedCooks(view.entries);
+  const summary = summarizePlan(view.entries);
 
   return (
     <main className="mx-auto max-w-3xl px-5 pt-8 pb-28 sm:px-6">
@@ -80,6 +82,7 @@ export default async function WeekPage({ params }: { params: Promise<{ week: str
         recipes={recipes}
         leftovers={leftovers}
         plannedCooks={plannedCooks}
+        summary={summary}
       />
     </main>
   );

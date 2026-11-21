@@ -208,3 +208,27 @@ export function derivePlannedCooks(entries: readonly PlanEntryView[]): PlannedCo
     reserved: reserved.get(cook.recipeId) ?? 0,
   }));
 }
+
+export interface PlanSummary {
+  /** Actual cooking entries, not leftover meals. */
+  readonly cooks: number;
+  /** Portions cooked but not yet earmarked as leftovers. */
+  readonly sparePortions: number;
+  /** Meals planned to eat leftovers, whether cooked yet or not. */
+  readonly leftoverMeals: number;
+}
+
+/** Split the plan into "what I cook" and "what I reheat" for the header. */
+export function summarizePlan(entries: readonly PlanEntryView[]): PlanSummary {
+  const cooks = derivePlannedCooks(entries);
+  return {
+    cooks: cooks.reduce((total, cook) => total + cook.cooks, 0),
+    sparePortions: cooks.reduce(
+      (total, cook) => total + Math.max(0, cook.capacity - cook.reserved),
+      0,
+    ),
+    leftoverMeals: entries.filter(
+      (entry) => entry.kind === "leftover" && entry.status === "planned",
+    ).length,
+  };
+}

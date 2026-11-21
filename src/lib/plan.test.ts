@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { derivePlannedCooks, type PlanEntryView } from "./plan";
+import { derivePlannedCooks, type PlanEntryView, summarizePlan } from "./plan";
 
 function entry(
   overrides: Partial<PlanEntryView> & Pick<PlanEntryView, "id" | "day" | "slot">,
@@ -85,5 +85,39 @@ describe("derivePlannedCooks", () => {
       entry({ id: "a", day: "2026-11-16", slot: "dinner", portions: 1 }),
     ]);
     expect(cooks[0]?.capacity).toBe(0);
+  });
+});
+
+describe("summarizePlan", () => {
+  it("counts cooks separately from leftover meals and reports spare portions", () => {
+    const summary = summarizePlan([
+      entry({
+        id: "cook",
+        day: "2026-11-28",
+        slot: "dinner",
+        recipeId: "frittata",
+        portions: 4,
+      }),
+      entry({
+        id: "lunch",
+        day: "2026-11-29",
+        slot: "lunch",
+        kind: "leftover",
+        leftoverId: null,
+        recipeId: "frittata",
+        portions: 1,
+      }),
+      entry({
+        id: "dinner",
+        day: "2026-11-29",
+        slot: "dinner",
+        kind: "leftover",
+        leftoverId: null,
+        recipeId: "frittata",
+        portions: 1,
+      }),
+    ]);
+
+    expect(summary).toEqual({ cooks: 1, sparePortions: 1, leftoverMeals: 2 });
   });
 });

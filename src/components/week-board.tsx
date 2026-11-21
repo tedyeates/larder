@@ -15,7 +15,14 @@ import {
   removePlanEntry,
 } from "@/actions/plan";
 import { generateShoppingList } from "@/actions/shop";
-import type { LeftoverOption, PlanEntryView, PlannedCook, RecipeOption, Slot } from "@/lib/plan";
+import type {
+  LeftoverOption,
+  PlanEntryView,
+  PlannedCook,
+  PlanSummary,
+  RecipeOption,
+  Slot,
+} from "@/lib/plan";
 import { type SwipeAction, SwipeActions } from "./swipe-actions";
 
 const DAY_LABEL = new Intl.DateTimeFormat("en-GB", {
@@ -37,6 +44,7 @@ export function WeekBoard({
   recipes,
   leftovers,
   plannedCooks,
+  summary,
 }: {
   week: string;
   days: readonly string[];
@@ -45,6 +53,7 @@ export function WeekBoard({
   recipes: readonly RecipeOption[];
   leftovers: readonly LeftoverOption[];
   plannedCooks: readonly PlannedCook[];
+  summary: PlanSummary;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -275,9 +284,17 @@ export function WeekBoard({
       )}
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-neutral-500">
-          {entries.length} dish(es) planned · {leftovers.length} leftover(s) waiting
-        </p>
+        <div className="space-y-0.5">
+          <p className="text-sm text-neutral-500">
+            {summary.cooks} dish(es) to cook · {summary.leftoverMeals} leftover meal(s)
+          </p>
+          <p className="text-xs text-neutral-500">
+            {summary.sparePortions > 0
+              ? `${summary.sparePortions} spare portion(s) from planned cooks`
+              : "No spare portions from planned cooks"}
+            {leftovers.length > 0 ? ` · ${leftovers.length} in the fridge` : ""}
+          </p>
+        </div>
         <button
           type="button"
           onClick={generate}
@@ -295,7 +312,7 @@ export function WeekBoard({
       {leftovers.length > 0 && (
         <section className="rounded-xl border border-neutral-200 p-3 dark:border-neutral-800">
           <h2 className="text-xs font-medium tracking-wide text-neutral-500 uppercase">
-            Leftovers waiting
+            Leftovers in the fridge
           </h2>
           <ul className="mt-2 divide-y divide-neutral-200 dark:divide-neutral-800">
             {leftovers.map((batch) => (
